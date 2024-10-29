@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"os/user"
 
 	"github.com/l-donovan/goparse"
@@ -25,14 +27,12 @@ func main() {
 		},
 		"upload": func(s *goparse.Parser) {
 			// Client mode
-			// TODO: Implement
 			s.AddParameter("source", "file to upload")
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.AddParameter("destination", "location of uploaded file")
 		},
 		"receive": func(s *goparse.Parser) {
 			// Server mode
-			// TODO: Implement
 			s.AddParameter("destination", "file to receive")
 		},
 	})
@@ -68,7 +68,11 @@ func main() {
 			panic(err)
 		}
 
-		defer remoteClient.Close()
+		defer func() {
+			if err := remoteClient.Close(); err != nil {
+				fmt.Printf("error when closing remote client: %v\n", err)
+			}
+		}()
 
 		if isDirectory {
 			err := client.DownloadDirectory(remoteClient, sourceFilePath, destFilePath)
@@ -83,27 +87,86 @@ func main() {
 				panic(err)
 			}
 		}
-
 	case "serve":
 		sourceFilePath := args["source"].(string)
 		isDirectory := args["directory"].(bool)
 
 		if isDirectory {
-			err := server.ServeDirectory(sourceFilePath)
+			err := server.ServeDirectory(sourceFilePath, os.Stdout)
 
 			if err != nil {
 				panic(err)
 			}
 		} else {
-			err := server.Serve(sourceFilePath)
+			err := server.Serve(sourceFilePath, os.Stdout)
 
 			if err != nil {
 				panic(err)
 			}
 		}
-
 	case "upload":
-	case "receive":
+		sourceFilePath := args["source"].(string)
+		connectionString := args["hostname"].(string)
+		destFilePath := args["destination"].(string)
+		isDirectory := args["directory"].(bool)
 
+		currentUser, err := user.Current()
+
+		if err != nil {
+			panic(err)
+		}
+
+		info, err := client.ParseConnectionString(connectionString, currentUser.Username, 22)
+
+		if err != nil {
+			panic(err)
+		}
+
+		// TODO: This obviously shouldn't be hardcoded
+		// How do we read from .ssh/config?
+		info.PrivateKeyPath = "/Users/ldonovan/.ssh/id_rsa"
+
+		remoteClient, err := client.CreateClient(*info)
+
+		if err != nil {
+			panic(err)
+		}
+
+		defer func() {
+			if err := remoteClient.Close(); err != nil {
+				fmt.Printf("error when closing remote client: %v\n", err)
+			}
+		}()
+
+		if isDirectory {
+			err := client.UploadDirectory(remoteClient, sourceFilePath, destFilePath)
+
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			err = client.Upload(remoteClient, sourceFilePath, destFilePath)
+
+			if err != nil {
+				panic(err)
+			}
+		}
+	case "receive":
+		destFilePath := args["destination"].(string)
+		isDirectory := args["directory"].(bool)
+
+		if isDirectory {
+			err := server.ReceiveDirectory(destFilePath, os.Stdin)
+
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			err := server.Receive(destFilePath, os.Stdin)
+
+			if err != nil {
+				panic(err)
+			}
+		}
 	}
 }

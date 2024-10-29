@@ -58,7 +58,7 @@ func AddFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 
 // ServeDirectory sends a directory via stdout and a simple wire protocol.
 // The directory is added to a tar archive and compressed with gzip.
-func ServeDirectory(directory string) error {
+func ServeDirectory(directory string, dst io.Writer) error {
 	var buf bytes.Buffer
 
 	// TODO: Fix gzip problems. For whatever reason, compression is breaking everything.
@@ -109,7 +109,7 @@ func ServeDirectory(directory string) error {
 		return err
 	}
 
-	_, err = io.Copy(os.Stdout, &buf)
+	_, err = io.Copy(dst, &buf)
 
 	if err != nil {
 		return err
@@ -119,7 +119,7 @@ func ServeDirectory(directory string) error {
 }
 
 // Serve sends a file via stdout and a simple wire protocol.
-func Serve(filePath string) error {
+func Serve(filePath string, dst io.Writer) error {
 	fileBytes, err := os.ReadFile(filePath)
 
 	if err != nil {
@@ -128,7 +128,11 @@ func Serve(filePath string) error {
 
 	// One line containing the file size in Bytes
 	fileSize := len(fileBytes)
-	fmt.Printf("%d\n", fileSize)
+	_, err = fmt.Fprintf(dst, "%d\n", fileSize)
+
+	if err != nil {
+		return err
+	}
 
 	fileInfo, err := os.Stat(filePath)
 
@@ -140,10 +144,14 @@ func Serve(filePath string) error {
 	// Normally this is represented in octal, but we're sending it over the wire in base-10 for
 	// more straightforward [un]marshalling.
 	fileMode := uint32(fileInfo.Mode())
-	fmt.Printf("%d\n", fileMode)
+	_, err = fmt.Fprintf(dst, "%d\n", fileMode)
+
+	if err != nil {
+		return err
+	}
 
 	// The file contents
-	_, err = os.Stdout.Write(fileBytes)
+	_, err = dst.Write(fileBytes)
 
 	if err != nil {
 		return err
