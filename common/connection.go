@@ -127,6 +127,22 @@ func CreateClient(info ConnectionInfo) (*ssh.Client, error) {
 	return client, nil
 }
 
+func FindExecutable(client *ssh.Client, name string) (string, error) {
+	session, err := client.NewSession()
+
+	if err != nil {
+		return "", err
+	}
+
+	out, err := session.Output(fmt.Sprintf("which %s", name))
+
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(out)), nil
+}
+
 func RunWithInput(client *ssh.Client, cmd string, handler func(stdin io.Writer) error) error {
 	session, err := client.NewSession()
 

@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/l-donovan/goparse"
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/receive"
 	"github.com/l-donovan/qcp/serve"
-	"os"
 )
 
 func main() {

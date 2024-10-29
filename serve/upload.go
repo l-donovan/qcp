@@ -9,8 +9,12 @@ import (
 )
 
 func UploadDirectory(client *ssh.Client, sourceDirectory, destDirectory string) error {
-	// TODO: This shouldn't be hardcoded
-	executable := "/home/ldonovan/bin/qcp"
+	executable, err := common.FindExecutable(client, "qcp")
+
+	if err != nil {
+		return err
+	}
+
 	serveCmd := fmt.Sprintf("%s -d receive %s", executable, destDirectory)
 
 	return common.RunWithInput(client, serveCmd, func(stdin io.Writer) error {
@@ -19,8 +23,12 @@ func UploadDirectory(client *ssh.Client, sourceDirectory, destDirectory string) 
 }
 
 func Upload(client *ssh.Client, sourceFilePath, destFilePath string) error {
-	// TODO: This shouldn't be hardcoded
-	executable := "/home/ldonovan/bin/qcp"
+	executable, err := common.FindExecutable(client, "qcp")
+
+	if err != nil {
+		return err
+	}
+
 	serveCmd := fmt.Sprintf("%s receive %s", executable, destFilePath)
 
 	return common.RunWithInput(client, serveCmd, func(stdin io.Writer) error {
