@@ -2,9 +2,10 @@ package serve
 
 import (
 	"fmt"
+	"io"
+
 	"github.com/l-donovan/qcp/common"
 	"golang.org/x/crypto/ssh"
-	"io"
 )
 
 func UploadDirectory(client *ssh.Client, sourceDirectory, destDirectory string) error {

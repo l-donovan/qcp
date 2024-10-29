@@ -1,9 +1,9 @@
 module github.com/l-donovan/qcp
 
-go 1.23.1
+go 1.23.2
 
 require (
-	github.com/l-donovan/goparse v0.0.0-20240423045844-26bf5f5f9983
+	github.com/l-donovan/goparse v0.0.0-20241029061454-0f181a925295
 	golang.org/x/crypto v0.28.0
 )
 

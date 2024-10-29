@@ -2,9 +2,10 @@ package receive
 
 import (
 	"fmt"
+	"io"
+
 	"github.com/l-donovan/qcp/common"
 	"golang.org/x/crypto/ssh"
-	"io"
 )
 
 func DownloadDirectory(client *ssh.Client, sourceDirectory, destDirectory string) error {

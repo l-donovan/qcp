@@ -1,5 +1,5 @@
-github.com/l-donovan/goparse v0.0.0-20240423045844-26bf5f5f9983 h1:x7V4LYySZe2lPkGuNW3iYskYkiNDi3c/OSX5483eI/c=
-github.com/l-donovan/goparse v0.0.0-20240423045844-26bf5f5f9983/go.mod h1:eIIvq/P5jfGLgmhCe58RXmTMdzSO7jszeu9WrkXkII4=
+github.com/l-donovan/goparse v0.0.0-20241029061454-0f181a925295 h1:JMRovugDAYVmkvkN7e4scpR8EvjfyJbBdmMYSxpsqkY=
+github.com/l-donovan/goparse v0.0.0-20241029061454-0f181a925295/go.mod h1:YuY0UAacLv4ocoODPReBFbYEgGay4gJ3tNhg7lKfCJs=
 golang.org/x/crypto v0.28.0 h1:GBDwsMXVQi34v5CCYUm2jkJvu4cbtru2U4TN2PSyQnw=
 golang.org/x/crypto v0.28.0/go.mod h1:rmgy+3RHxRZMyY0jjAJShp2zgEdOqj2AO7U0pYmeQ7U=
 golang.org/x/sys v0.26.0 h1:KHjCJyddX0LoSTb3J+vWpupP9p0oznkqVk/IfjymZbo=

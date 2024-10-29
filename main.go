@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/l-donovan/qcp/receive"
-	"github.com/l-donovan/qcp/serve"
 	"os"
 	"os/user"
 
 	"github.com/l-donovan/goparse"
 	"github.com/l-donovan/qcp/common"
+	"github.com/l-donovan/qcp/receive"
+	"github.com/l-donovan/qcp/serve"
 )
 
 func main() {
@@ -22,8 +22,8 @@ func main() {
 			s.AddParameter("source", "file to download")
 			s.AddParameter("destination", "location of downloaded file")
 		},
-		"serve": func(s *goparse.Parser) {
-			// Server mode
+		"_serve": func(s *goparse.Parser) {
+			// Server mode (hidden)
 			s.AddParameter("source", "file to serve")
 		},
 		"upload": func(s *goparse.Parser) {
@@ -32,8 +32,8 @@ func main() {
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.AddParameter("destination", "location of uploaded file")
 		},
-		"receive": func(s *goparse.Parser) {
-			// Server mode
+		"_receive": func(s *goparse.Parser) {
+			// Server mode (hidden)
 			s.AddParameter("destination", "file to receive")
 		},
 	})
