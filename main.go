@@ -2,13 +2,11 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/user"
-
 	"github.com/l-donovan/goparse"
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/receive"
 	"github.com/l-donovan/qcp/serve"
+	"os"
 )
 
 func main() {
@@ -47,13 +45,7 @@ func main() {
 		destFilePath := args["destination"].(string)
 		isDirectory := args["directory"].(bool)
 
-		currentUser, err := user.Current()
-
-		if err != nil {
-			panic(err)
-		}
-
-		info, err := common.ParseConnectionString(connectionString, currentUser.Username, 22)
+		info, err := common.ParseConnectionString(connectionString)
 
 		if err != nil {
 			panic(err)
@@ -107,13 +99,7 @@ func main() {
 		destFilePath := args["destination"].(string)
 		isDirectory := args["directory"].(bool)
 
-		currentUser, err := user.Current()
-
-		if err != nil {
-			panic(err)
-		}
-
-		info, err := common.ParseConnectionString(connectionString, currentUser.Username, 22)
+		info, err := common.ParseConnectionString(connectionString)
 
 		if err != nil {
 			panic(err)

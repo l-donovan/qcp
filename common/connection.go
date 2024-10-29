@@ -23,7 +23,7 @@ type ConnectionInfo struct {
 	Port           int
 }
 
-func ParseConnectionString(connection string, defaultUser string, defaultPort int) (*ConnectionInfo, error) {
+func ParseConnectionString(connection string) (*ConnectionInfo, error) {
 	connExpr := regexp.MustCompile(`(?:(.+)@)?([^:]+)(?::(\d+))?`)
 
 	groups := connExpr.FindStringSubmatch(connection)
@@ -32,8 +32,14 @@ func ParseConnectionString(connection string, defaultUser string, defaultPort in
 		return nil, fmt.Errorf("could not parse connection string")
 	}
 
-	username := defaultUser
-	port := defaultPort
+	currentUser, err := user.Current()
+
+	if err != nil {
+		return nil, err
+	}
+
+	username := currentUser.Username
+	port := 22
 	hostname := groups[2]
 	privateKeyPath := ""
 
@@ -66,12 +72,6 @@ func ParseConnectionString(connection string, defaultUser string, defaultPort in
 	}
 
 	if val := sshConfig.Get(hostname, "IdentityFile"); val != "" {
-		currentUser, err := user.Current()
-
-		if err != nil {
-			return nil, err
-		}
-
 		var path string
 
 		if val == "~" {
