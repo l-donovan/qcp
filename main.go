@@ -59,10 +59,6 @@ func main() {
 			panic(err)
 		}
 
-		// TODO: This obviously shouldn't be hardcoded
-		// How do we read from .ssh/config?
-		info.PrivateKeyPath = "/Users/ldonovan/.ssh/id_rsa"
-
 		remoteClient, err := common.CreateClient(*info)
 
 		if err != nil {
@@ -122,10 +118,6 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-
-		// TODO: This obviously shouldn't be hardcoded
-		// How do we read from .ssh/config?
-		info.PrivateKeyPath = "/Users/ldonovan/.ssh/id_rsa"
 
 		remoteClient, err := common.CreateClient(*info)
 

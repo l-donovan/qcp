@@ -7,8 +7,13 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/user"
+	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
+
+	sshConfig "github.com/kevinburke/ssh_config"
 )
 
 type ConnectionInfo struct {
@@ -27,12 +32,13 @@ func ParseConnectionString(connection string, defaultUser string, defaultPort in
 		return nil, fmt.Errorf("could not parse connection string")
 	}
 
-	user := defaultUser
+	username := defaultUser
 	port := defaultPort
 	hostname := groups[2]
+	privateKeyPath := ""
 
 	if groups[1] != "" {
-		user = groups[1]
+		username = groups[1]
 	}
 
 	if groups[3] != "" {
@@ -45,9 +51,41 @@ func ParseConnectionString(connection string, defaultUser string, defaultPort in
 		port = tempPort
 	}
 
+	if val := sshConfig.Get(hostname, "HostName"); val != "" {
+		hostname = val
+	}
+
+	if val := sshConfig.Get(hostname, "Port"); val != "" {
+		tempPort, err := strconv.Atoi(val)
+
+		if err != nil {
+			return nil, err
+		}
+
+		port = tempPort
+	}
+
+	if val := sshConfig.Get(hostname, "IdentityFile"); val != "" {
+		currentUser, err := user.Current()
+
+		if err != nil {
+			return nil, err
+		}
+
+		var path string
+
+		if val == "~" {
+			path = currentUser.HomeDir
+		} else if strings.HasPrefix(val, "~/") {
+			path = filepath.Join(currentUser.HomeDir, val[2:])
+		}
+
+		privateKeyPath = path
+	}
+
 	info := ConnectionInfo{
-		Username:       user,
-		PrivateKeyPath: "",
+		Username:       username,
+		PrivateKeyPath: privateKeyPath,
 		Hostname:       hostname,
 		Port:           port,
 	}
