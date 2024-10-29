@@ -1,4 +1,4 @@
-package server
+package receive
 
 import (
 	"archive/tar"

@@ -1,8 +1,8 @@
-package client
+package serve
 
 import (
 	"fmt"
-	"github.com/l-donovan/qcp/server"
+	"github.com/l-donovan/qcp/common"
 	"golang.org/x/crypto/ssh"
 	"io"
 )
@@ -12,8 +12,8 @@ func UploadDirectory(client *ssh.Client, sourceDirectory, destDirectory string) 
 	executable := "/home/ldonovan/bin/qcp"
 	serveCmd := fmt.Sprintf("%s -d receive %s", executable, destDirectory)
 
-	return RunWithInput(client, serveCmd, func(stdin io.Writer) error {
-		return server.ServeDirectory(sourceDirectory, stdin)
+	return common.RunWithInput(client, serveCmd, func(stdin io.Writer) error {
+		return ServeDirectory(sourceDirectory, stdin)
 	})
 }
 
@@ -22,7 +22,7 @@ func Upload(client *ssh.Client, sourceFilePath, destFilePath string) error {
 	executable := "/home/ldonovan/bin/qcp"
 	serveCmd := fmt.Sprintf("%s receive %s", executable, destFilePath)
 
-	return RunWithInput(client, serveCmd, func(stdin io.Writer) error {
-		return server.Serve(sourceFilePath, stdin)
+	return common.RunWithInput(client, serveCmd, func(stdin io.Writer) error {
+		return Serve(sourceFilePath, stdin)
 	})
 }

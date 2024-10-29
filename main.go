@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"github.com/l-donovan/qcp/receive"
+	"github.com/l-donovan/qcp/serve"
 	"os"
 	"os/user"
 
 	"github.com/l-donovan/goparse"
-	"github.com/l-donovan/qcp/client"
-	"github.com/l-donovan/qcp/server"
+	"github.com/l-donovan/qcp/common"
 )
 
 func main() {
@@ -52,7 +53,7 @@ func main() {
 			panic(err)
 		}
 
-		info, err := client.ParseConnectionString(connectionString, currentUser.Username, 22)
+		info, err := common.ParseConnectionString(connectionString, currentUser.Username, 22)
 
 		if err != nil {
 			panic(err)
@@ -62,7 +63,7 @@ func main() {
 		// How do we read from .ssh/config?
 		info.PrivateKeyPath = "/Users/ldonovan/.ssh/id_rsa"
 
-		remoteClient, err := client.CreateClient(*info)
+		remoteClient, err := common.CreateClient(*info)
 
 		if err != nil {
 			panic(err)
@@ -75,13 +76,13 @@ func main() {
 		}()
 
 		if isDirectory {
-			err := client.DownloadDirectory(remoteClient, sourceFilePath, destFilePath)
+			err := receive.DownloadDirectory(remoteClient, sourceFilePath, destFilePath)
 
 			if err != nil {
 				panic(err)
 			}
 		} else {
-			err = client.Download(remoteClient, sourceFilePath, destFilePath)
+			err = receive.Download(remoteClient, sourceFilePath, destFilePath)
 
 			if err != nil {
 				panic(err)
@@ -92,13 +93,13 @@ func main() {
 		isDirectory := args["directory"].(bool)
 
 		if isDirectory {
-			err := server.ServeDirectory(sourceFilePath, os.Stdout)
+			err := serve.ServeDirectory(sourceFilePath, os.Stdout)
 
 			if err != nil {
 				panic(err)
 			}
 		} else {
-			err := server.Serve(sourceFilePath, os.Stdout)
+			err := serve.Serve(sourceFilePath, os.Stdout)
 
 			if err != nil {
 				panic(err)
@@ -116,7 +117,7 @@ func main() {
 			panic(err)
 		}
 
-		info, err := client.ParseConnectionString(connectionString, currentUser.Username, 22)
+		info, err := common.ParseConnectionString(connectionString, currentUser.Username, 22)
 
 		if err != nil {
 			panic(err)
@@ -126,7 +127,7 @@ func main() {
 		// How do we read from .ssh/config?
 		info.PrivateKeyPath = "/Users/ldonovan/.ssh/id_rsa"
 
-		remoteClient, err := client.CreateClient(*info)
+		remoteClient, err := common.CreateClient(*info)
 
 		if err != nil {
 			panic(err)
@@ -139,13 +140,13 @@ func main() {
 		}()
 
 		if isDirectory {
-			err := client.UploadDirectory(remoteClient, sourceFilePath, destFilePath)
+			err := serve.UploadDirectory(remoteClient, sourceFilePath, destFilePath)
 
 			if err != nil {
 				panic(err)
 			}
 		} else {
-			err = client.Upload(remoteClient, sourceFilePath, destFilePath)
+			err = serve.Upload(remoteClient, sourceFilePath, destFilePath)
 
 			if err != nil {
 				panic(err)
@@ -156,13 +157,13 @@ func main() {
 		isDirectory := args["directory"].(bool)
 
 		if isDirectory {
-			err := server.ReceiveDirectory(destFilePath, os.Stdin)
+			err := receive.ReceiveDirectory(destFilePath, os.Stdin)
 
 			if err != nil {
 				panic(err)
 			}
 		} else {
-			err := server.Receive(destFilePath, os.Stdin)
+			err := receive.Receive(destFilePath, os.Stdin)
 
 			if err != nil {
 				panic(err)

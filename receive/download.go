@@ -1,8 +1,8 @@
-package client
+package receive
 
 import (
 	"fmt"
-	"github.com/l-donovan/qcp/server"
+	"github.com/l-donovan/qcp/common"
 	"golang.org/x/crypto/ssh"
 	"io"
 )
@@ -12,8 +12,8 @@ func DownloadDirectory(client *ssh.Client, sourceDirectory, destDirectory string
 	executable := "/home/ldonovan/bin/qcp"
 	serveCmd := fmt.Sprintf("%s -d serve %s", executable, sourceDirectory)
 
-	return RunWithOutput(client, serveCmd, func(stdout io.Reader) error {
-		return server.ReceiveDirectory(destDirectory, stdout)
+	return common.RunWithOutput(client, serveCmd, func(stdout io.Reader) error {
+		return ReceiveDirectory(destDirectory, stdout)
 	})
 }
 
@@ -22,7 +22,7 @@ func Download(client *ssh.Client, sourceFilePath, destFilePath string) error {
 	executable := "/home/ldonovan/bin/qcp"
 	serveCmd := fmt.Sprintf("%s serve %s", executable, sourceFilePath)
 
-	return RunWithOutput(client, serveCmd, func(stdout io.Reader) error {
-		return server.Receive(destFilePath, stdout)
+	return common.RunWithOutput(client, serveCmd, func(stdout io.Reader) error {
+		return Receive(destFilePath, stdout)
 	})
 }
