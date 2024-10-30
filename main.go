@@ -8,7 +8,17 @@ import (
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/receive"
 	"github.com/l-donovan/qcp/serve"
+	"github.com/l-donovan/qcp/sideload"
 )
+
+func exitWithMessage(format string, a ...any) {
+	_, _ = fmt.Fprintf(os.Stderr, format+"\n", a...)
+	os.Exit(1)
+}
+
+func exitWithError(err error) {
+	exitWithMessage("%v", err)
+}
 
 func main() {
 	parser := goparse.NewParser()
@@ -35,6 +45,12 @@ func main() {
 			// Server mode (hidden)
 			s.AddParameter("destination", "file to receive")
 		},
+		"sideload": func(s *goparse.Parser) {
+			// Client mode
+			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
+			s.AddValueFlag("release", 'r', "qcp release to sideload (default \"latest\")", "version", "latest")
+			s.AddValueFlag("location", 'l', "target location for qcp executable on host (default \"$HOME/bin/qcp\")", "path", "$HOME/bin/qcp")
+		},
 	})
 
 	args := parser.MustParseArgs()
@@ -49,18 +65,18 @@ func main() {
 		info, err := common.ParseConnectionString(connectionString)
 
 		if err != nil {
-			panic(err)
+			exitWithError(err)
 		}
 
 		remoteClient, err := common.CreateClient(*info)
 
 		if err != nil {
-			panic(err)
+			exitWithError(err)
 		}
 
 		defer func() {
 			if err := remoteClient.Close(); err != nil {
-				fmt.Printf("error when closing remote client: %v\n", err)
+				exitWithMessage("error when closing remote client: %v\n", err)
 			}
 		}()
 
@@ -68,13 +84,13 @@ func main() {
 			err := receive.DownloadDirectory(remoteClient, sourceFilePath, destFilePath)
 
 			if err != nil {
-				panic(err)
+				exitWithError(err)
 			}
 		} else {
 			err = receive.Download(remoteClient, sourceFilePath, destFilePath)
 
 			if err != nil {
-				panic(err)
+				exitWithError(err)
 			}
 		}
 	case "serve":
@@ -85,13 +101,13 @@ func main() {
 			err := serve.ServeDirectory(sourceFilePath, os.Stdout)
 
 			if err != nil {
-				panic(err)
+				exitWithError(err)
 			}
 		} else {
 			err := serve.Serve(sourceFilePath, os.Stdout)
 
 			if err != nil {
-				panic(err)
+				exitWithError(err)
 			}
 		}
 	case "upload":
@@ -103,18 +119,18 @@ func main() {
 		info, err := common.ParseConnectionString(connectionString)
 
 		if err != nil {
-			panic(err)
+			exitWithError(err)
 		}
 
 		remoteClient, err := common.CreateClient(*info)
 
 		if err != nil {
-			panic(err)
+			exitWithError(err)
 		}
 
 		defer func() {
 			if err := remoteClient.Close(); err != nil {
-				fmt.Printf("error when closing remote client: %v\n", err)
+				exitWithMessage("error when closing remote client: %v\n", err)
 			}
 		}()
 
@@ -122,13 +138,13 @@ func main() {
 			err := serve.UploadDirectory(remoteClient, sourceFilePath, destFilePath)
 
 			if err != nil {
-				panic(err)
+				exitWithError(err)
 			}
 		} else {
 			err = serve.Upload(remoteClient, sourceFilePath, destFilePath)
 
 			if err != nil {
-				panic(err)
+				exitWithError(err)
 			}
 		}
 	case "receive":
@@ -139,14 +155,42 @@ func main() {
 			err := receive.ReceiveDirectory(destFilePath, os.Stdin)
 
 			if err != nil {
-				panic(err)
+				exitWithError(err)
 			}
 		} else {
 			err := receive.Receive(destFilePath, os.Stdin)
 
 			if err != nil {
-				panic(err)
+				exitWithError(err)
 			}
+		}
+	case "sideload":
+		connectionString := args["hostname"].(string)
+		release := args["release"].(string)
+		location := args["location"].(string)
+
+		info, err := common.ParseConnectionString(connectionString)
+
+		if err != nil {
+			exitWithError(err)
+		}
+
+		remoteClient, err := common.CreateClient(*info)
+
+		if err != nil {
+			exitWithError(err)
+		}
+
+		defer func() {
+			if err := remoteClient.Close(); err != nil {
+				exitWithMessage("error when closing remote client: %v\n", err)
+			}
+		}()
+
+		err = sideload.GetBinary(remoteClient, release, location)
+
+		if err != nil {
+			exitWithError(err)
 		}
 	}
 }
