@@ -2,7 +2,6 @@ package sideload
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -72,7 +71,7 @@ func getBinaryUrl(release, hostOs, hostArch string) (string, error) {
 }
 
 func transferBinary(client *ssh.Client, tarReader *tar.Reader, location string) error {
-	err := common.RunWithInput(client, fmt.Sprintf("cat > %s", location), func(stdin io.Writer) error {
+	err := common.RunWithPipes(client, fmt.Sprintf("cat > %s", location), func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
 		_, err := io.Copy(stdin, tarReader)
 		return err
 	})
@@ -81,6 +80,16 @@ func transferBinary(client *ssh.Client, tarReader *tar.Reader, location string) 
 		return err
 	}
 
+	err = makeExecutable(client, location)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func makeExecutable(client *ssh.Client, location string) error {
 	session, err := client.NewSession()
 
 	if err != nil {
@@ -95,11 +104,7 @@ func transferBinary(client *ssh.Client, tarReader *tar.Reader, location string) 
 
 	_, err = session.Output(fmt.Sprintf("chmod +x %s", location))
 
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func GetBinary(client *ssh.Client, release, location string) error {
@@ -160,13 +165,7 @@ func GetBinary(client *ssh.Client, release, location string) error {
 			return transferBinary(client, tarReader, location)
 		}
 
-		var fileBuf bytes.Buffer
-
-		_, err = io.Copy(&fileBuf, tarReader)
-
-		if err != nil {
-			return err
-		}
+		_, _ = io.Copy(io.Discard, tarReader)
 	}
 
 	return fmt.Errorf("could not find file matching qcp in downloaded tarball")

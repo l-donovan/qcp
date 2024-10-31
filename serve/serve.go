@@ -2,7 +2,7 @@ package serve
 
 import (
 	"archive/tar"
-	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"io/fs"
@@ -58,20 +58,16 @@ func AddFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 
 // ServeDirectory sends a directory via stdout and a simple wire protocol.
 // The directory is added to a tar archive and compressed with gzip.
-func ServeDirectory(directory string, dst io.Writer) error {
-	var buf bytes.Buffer
+func ServeDirectory(srcDirectory string, dst io.Writer) error {
+	gzipWriter := gzip.NewWriter(dst)
 
-	// TODO: Fix gzip problems. For whatever reason, compression is breaking everything.
+	defer func() {
+		if err := gzipWriter.Close(); err != nil {
+			fmt.Printf("Error closing gzip writer: %v\n", err)
+		}
+	}()
 
-	// gzipWriter := gzip.NewWriter(&buf)
-	//
-	// defer func() {
-	// 	if err := gzipWriter.Close(); err != nil {
-	// 		fmt.Printf("Error closing gzip writer: %v\n", err)
-	// 	}
-	// }()
-
-	tarWriter := tar.NewWriter(&buf)
+	tarWriter := tar.NewWriter(gzipWriter)
 
 	defer func() {
 		if err := tarWriter.Close(); err != nil {
@@ -81,14 +77,14 @@ func ServeDirectory(directory string, dst io.Writer) error {
 
 	// TODO: Might be nice to stick file count or archive size at the top of our stream for determining progress.
 
-	err := filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(srcDirectory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
 		// Skip the source directory root. This can be ignored because the source
 		// directory root is just the root of the tarball.
-		if path == directory {
+		if path == srcDirectory {
 			return nil
 		}
 
@@ -98,18 +94,8 @@ func ServeDirectory(directory string, dst io.Writer) error {
 			return nil
 		}
 
-		if err := AddFileToTarArchive(tarWriter, path, directory); err != nil {
-			return err
-		}
-
-		return nil
+		return AddFileToTarArchive(tarWriter, path, srcDirectory)
 	})
-
-	if err != nil {
-		return err
-	}
-
-	_, err = io.Copy(dst, &buf)
 
 	if err != nil {
 		return err
@@ -119,8 +105,8 @@ func ServeDirectory(directory string, dst io.Writer) error {
 }
 
 // Serve sends a file via stdout and a simple wire protocol.
-func Serve(filePath string, dst io.Writer) error {
-	fileBytes, err := os.ReadFile(filePath)
+func Serve(srcFilePath string, dst io.Writer) error {
+	fileBytes, err := os.ReadFile(srcFilePath)
 
 	if err != nil {
 		return err
@@ -134,7 +120,7 @@ func Serve(filePath string, dst io.Writer) error {
 		return err
 	}
 
-	fileInfo, err := os.Stat(filePath)
+	fileInfo, err := os.Stat(srcFilePath)
 
 	if err != nil {
 		return err

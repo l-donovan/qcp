@@ -3,7 +3,6 @@ package common
 import (
 	"bufio"
 	"fmt"
-	"golang.org/x/crypto/ssh"
 	"io"
 	"net"
 	"os"
@@ -14,7 +13,10 @@ import (
 	"strings"
 
 	sshConfig "github.com/kevinburke/ssh_config"
+	"golang.org/x/crypto/ssh"
 )
+
+type RunHandler func(stdin io.WriteCloser, stdout, stderr io.Reader) error
 
 type ConnectionInfo struct {
 	Username       string
@@ -143,7 +145,26 @@ func FindExecutable(client *ssh.Client, name string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func RunWithInput(client *ssh.Client, cmd string, handler func(stdin io.Writer) error) error {
+func LogErrors(stderr io.Reader) {
+	stderrReader := bufio.NewReader(stderr)
+
+	for {
+		out, err := stderrReader.ReadString('\n')
+
+		if err == io.EOF {
+			break
+		}
+
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "error when reading qcp output on remote host: %v\n", err)
+			break
+		}
+
+		_, _ = fmt.Fprintf(os.Stderr, "error when running qcp command on remote host: %s\n", out)
+	}
+}
+
+func RunWithPipes(client *ssh.Client, cmd string, handle RunHandler) error {
 	session, err := client.NewSession()
 
 	if err != nil {
@@ -161,71 +182,6 @@ func RunWithInput(client *ssh.Client, cmd string, handler func(stdin io.Writer) 
 	if err != nil {
 		return err
 	}
-
-	stderr, err := session.StderrPipe()
-
-	if err != nil {
-		return err
-	}
-
-	err = session.Start(cmd)
-
-	if err != nil {
-		return err
-	}
-
-	go func(stderr io.Reader) {
-		stderrReader := bufio.NewReader(stderr)
-
-		for {
-			out, err := stderrReader.ReadString('\n')
-
-			if err == io.EOF {
-				break
-			}
-
-			if err != nil {
-				fmt.Printf("error when reading: %v\n", err)
-				break
-			}
-
-			fmt.Printf("got stderr: %s\n", out)
-		}
-	}(stderr)
-
-	err = handler(stdin)
-
-	if err != nil {
-		return err
-	}
-
-	err = stdin.Close()
-
-	if err != nil {
-		return err
-	}
-
-	err = session.Wait()
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func RunWithOutput(client *ssh.Client, cmd string, handler func(stdout io.Reader) error) error {
-	session, err := client.NewSession()
-
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := session.Close(); err != nil && err != io.EOF {
-			fmt.Printf("error when closing session: %v\n", err)
-		}
-	}()
 
 	stdout, err := session.StdoutPipe()
 
@@ -245,26 +201,13 @@ func RunWithOutput(client *ssh.Client, cmd string, handler func(stdout io.Reader
 		return err
 	}
 
-	go func(stderr io.Reader) {
-		stderrReader := bufio.NewReader(stderr)
+	err = handle(stdin, stdout, stderr)
 
-		for {
-			out, err := stderrReader.ReadString('\n')
+	if err != nil {
+		return err
+	}
 
-			if err == io.EOF {
-				break
-			}
-
-			if err != nil {
-				fmt.Printf("error when reading: %v\n", err)
-				break
-			}
-
-			fmt.Printf("got stderr: %s\n", out)
-		}
-	}(stderr)
-
-	err = handler(stdout)
+	err = stdin.Close()
 
 	if err != nil {
 		return err

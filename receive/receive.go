@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
@@ -13,16 +14,14 @@ import (
 	"strings"
 )
 
-func ReceiveDirectory(destDirectory string, src io.Reader) error {
-	// TODO: Fix gzip problems
+func ReceiveDirectory(dstDirectory string, src io.Reader) error {
+	gzipReader, err := gzip.NewReader(src)
 
-	// gzipReader, err := gzip.NewReader(src)
-	//
-	// if err != nil {
-	// 	return err
-	// }
+	if err != nil {
+		return err
+	}
 
-	tarReader := tar.NewReader(src)
+	tarReader := tar.NewReader(gzipReader)
 
 	for {
 		header, err := tarReader.Next()
@@ -37,7 +36,7 @@ func ReceiveDirectory(destDirectory string, src io.Reader) error {
 		}
 
 		var fileBuf bytes.Buffer
-		filePath := path.Join(destDirectory, header.Name)
+		filePath := path.Join(dstDirectory, header.Name)
 		fmt.Printf("Receiving %s\n", header.Name)
 
 		_, err = io.Copy(&fileBuf, tarReader)
@@ -62,7 +61,7 @@ func ReceiveDirectory(destDirectory string, src io.Reader) error {
 	return nil
 }
 
-func Receive(destFilePath string, src io.Reader) error {
+func Receive(dstFilePath string, src io.Reader) error {
 	srcReader := bufio.NewReader(src)
 
 	fileSizeStr, err := srcReader.ReadString('\n')
@@ -96,7 +95,7 @@ func Receive(destFilePath string, src io.Reader) error {
 		return err
 	}
 
-	err = os.WriteFile(destFilePath, fileContents, os.FileMode(fileMode))
+	err = os.WriteFile(dstFilePath, fileContents, os.FileMode(fileMode))
 
 	if err != nil {
 		return err

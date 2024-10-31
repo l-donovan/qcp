@@ -23,27 +23,30 @@ func exitWithError(err error) {
 func main() {
 	parser := goparse.NewParser()
 
-	parser.AddFlag("directory", 'd', "source should be treated as a directory", false)
 	parser.Subparse("mode", "mode of operation", map[string]func(parser *goparse.Parser){
 		"download": func(s *goparse.Parser) {
 			// Client mode
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.AddParameter("source", "file to download")
 			s.AddParameter("destination", "location of downloaded file")
+			s.AddFlag("directory", 'd', "source should be treated as a directory", false)
 		},
 		"_serve": func(s *goparse.Parser) {
 			// Server mode (hidden)
 			s.AddParameter("source", "file to serve")
+			s.AddFlag("directory", 'd', "source should be treated as a directory", false)
 		},
 		"upload": func(s *goparse.Parser) {
 			// Client mode
 			s.AddParameter("source", "file to upload")
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.AddParameter("destination", "location of uploaded file")
+			s.AddFlag("directory", 'd', "source should be treated as a directory", false)
 		},
 		"_receive": func(s *goparse.Parser) {
 			// Server mode (hidden)
 			s.AddParameter("destination", "file to receive")
+			s.AddFlag("directory", 'd', "source should be treated as a directory", false)
 		},
 		"sideload": func(s *goparse.Parser) {
 			// Client mode
@@ -58,8 +61,8 @@ func main() {
 	switch args["mode"].(string) {
 	case "download":
 		connectionString := args["hostname"].(string)
-		sourceFilePath := args["source"].(string)
-		destFilePath := args["destination"].(string)
+		srcFilePath := args["source"].(string)
+		dstFilePath := args["destination"].(string)
 		isDirectory := args["directory"].(bool)
 
 		info, err := common.ParseConnectionString(connectionString)
@@ -81,39 +84,39 @@ func main() {
 		}()
 
 		if isDirectory {
-			err := receive.DownloadDirectory(remoteClient, sourceFilePath, destFilePath)
+			err := receive.DownloadDirectory(remoteClient, srcFilePath, dstFilePath)
 
 			if err != nil {
 				exitWithError(err)
 			}
 		} else {
-			err = receive.Download(remoteClient, sourceFilePath, destFilePath)
+			err = receive.Download(remoteClient, srcFilePath, dstFilePath)
 
 			if err != nil {
 				exitWithError(err)
 			}
 		}
 	case "serve":
-		sourceFilePath := args["source"].(string)
+		srcFilePath := args["source"].(string)
 		isDirectory := args["directory"].(bool)
 
 		if isDirectory {
-			err := serve.ServeDirectory(sourceFilePath, os.Stdout)
+			err := serve.ServeDirectory(srcFilePath, os.Stdout)
 
 			if err != nil {
 				exitWithError(err)
 			}
 		} else {
-			err := serve.Serve(sourceFilePath, os.Stdout)
+			err := serve.Serve(srcFilePath, os.Stdout)
 
 			if err != nil {
 				exitWithError(err)
 			}
 		}
 	case "upload":
-		sourceFilePath := args["source"].(string)
+		srcFilePath := args["source"].(string)
 		connectionString := args["hostname"].(string)
-		destFilePath := args["destination"].(string)
+		dstFilePath := args["destination"].(string)
 		isDirectory := args["directory"].(bool)
 
 		info, err := common.ParseConnectionString(connectionString)
@@ -135,30 +138,30 @@ func main() {
 		}()
 
 		if isDirectory {
-			err := serve.UploadDirectory(remoteClient, sourceFilePath, destFilePath)
+			err := serve.UploadDirectory(remoteClient, srcFilePath, dstFilePath)
 
 			if err != nil {
 				exitWithError(err)
 			}
 		} else {
-			err = serve.Upload(remoteClient, sourceFilePath, destFilePath)
+			err = serve.Upload(remoteClient, srcFilePath, dstFilePath)
 
 			if err != nil {
 				exitWithError(err)
 			}
 		}
 	case "receive":
-		destFilePath := args["destination"].(string)
+		dstFilePath := args["destination"].(string)
 		isDirectory := args["directory"].(bool)
 
 		if isDirectory {
-			err := receive.ReceiveDirectory(destFilePath, os.Stdin)
+			err := receive.ReceiveDirectory(dstFilePath, os.Stdin)
 
 			if err != nil {
 				exitWithError(err)
 			}
 		} else {
-			err := receive.Receive(destFilePath, os.Stdin)
+			err := receive.Receive(dstFilePath, os.Stdin)
 
 			if err != nil {
 				exitWithError(err)
