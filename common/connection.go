@@ -45,24 +45,17 @@ func ParseConnectionString(connection string) (*ConnectionInfo, error) {
 	hostname := groups[2]
 	privateKeyPath := ""
 
+	// Check config file for User
+	if val := sshConfig.Get(hostname, "User"); val != "" {
+		username = val
+	}
+
+	// The provided username takes precedence
 	if groups[1] != "" {
 		username = groups[1]
 	}
 
-	if groups[3] != "" {
-		tempPort, err := strconv.Atoi(groups[3])
-
-		if err != nil {
-			return nil, err
-		}
-
-		port = tempPort
-	}
-
-	if val := sshConfig.Get(hostname, "HostName"); val != "" {
-		hostname = val
-	}
-
+	// Check config file for Port
 	if val := sshConfig.Get(hostname, "Port"); val != "" {
 		tempPort, err := strconv.Atoi(val)
 
@@ -73,8 +66,22 @@ func ParseConnectionString(connection string) (*ConnectionInfo, error) {
 		port = tempPort
 	}
 
-	if val := sshConfig.Get(hostname, "IdentityFile"); val != "" {
+	// The provided port takes precedence
+	if groups[3] != "" {
+		tempPort, err := strconv.Atoi(groups[3])
+
+		if err != nil {
+			return nil, err
+		}
+
+		port = tempPort
+	}
+
+	// Check config file for IdentityFile(s)
+	if vals := sshConfig.GetAll(hostname, "IdentityFile"); vals != nil {
 		var path string
+
+		val := vals[len(vals)-1]
 
 		if val == "~" {
 			path = currentUser.HomeDir
@@ -83,6 +90,11 @@ func ParseConnectionString(connection string) (*ConnectionInfo, error) {
 		}
 
 		privateKeyPath = path
+	}
+
+	// We do this last, otherwise config lookups by hostname might not work!
+	if val := sshConfig.Get(hostname, "HostName"); val != "" {
+		hostname = val
 	}
 
 	info := ConnectionInfo{
@@ -209,13 +221,15 @@ func RunWithPipes(client *ssh.Client, cmd string, handle RunHandler) error {
 
 	err = stdin.Close()
 
-	if err != nil {
+	// We also check for EOF in case `handle` already closed stdin
+	if err != nil && err != io.EOF {
 		return err
 	}
 
 	err = session.Wait()
 
 	if err != nil {
+		fmt.Printf("B")
 		return err
 	}
 

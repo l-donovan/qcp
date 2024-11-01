@@ -58,7 +58,7 @@ func AddFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 
 // ServeDirectory sends a directory via stdout and a simple wire protocol.
 // The directory is added to a tar archive and compressed with gzip.
-func ServeDirectory(srcDirectory string, dst io.Writer) error {
+func ServeDirectory(srcDirectory string, dst io.WriteCloser) error {
 	gzipWriter := gzip.NewWriter(dst)
 
 	defer func() {
@@ -105,7 +105,7 @@ func ServeDirectory(srcDirectory string, dst io.Writer) error {
 }
 
 // Serve sends a file via stdout and a simple wire protocol.
-func Serve(srcFilePath string, dst io.Writer) error {
+func Serve(srcFilePath string, dst io.WriteCloser) error {
 	fileBytes, err := os.ReadFile(srcFilePath)
 
 	if err != nil {

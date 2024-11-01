@@ -8,11 +8,15 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func DownloadDirectory(client *ssh.Client, srcDirectory, dstDirectory string) error {
-	executable, err := common.FindExecutable(client, "qcp")
+func DownloadDirectory(client *ssh.Client, srcDirectory, dstDirectory string, executable string) error {
+	if executable == "" {
+		foundExecutable, err := common.FindExecutable(client, "qcp")
 
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
+
+		executable = foundExecutable
 	}
 
 	serveCmd := fmt.Sprintf("%s serve -d %s", executable, srcDirectory)
@@ -23,11 +27,15 @@ func DownloadDirectory(client *ssh.Client, srcDirectory, dstDirectory string) er
 	})
 }
 
-func Download(client *ssh.Client, srcFilePath, dstFilePath string) error {
-	executable, err := common.FindExecutable(client, "qcp")
+func Download(client *ssh.Client, srcFilePath, dstFilePath string, executable string) error {
+	if executable == "" {
+		foundExecutable, err := common.FindExecutable(client, "qcp")
 
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
+
+		executable = foundExecutable
 	}
 
 	serveCmd := fmt.Sprintf("%s serve %s", executable, srcFilePath)
