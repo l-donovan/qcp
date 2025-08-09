@@ -55,14 +55,6 @@ function isDirectory(mode) {
     return ((mode >> 31) & 0b1) > 0;
 }
 
-function debug() {
-    if (!ws) {
-        return;
-    }
-
-    ws.send("debug");
-}
-
 function createEntry(item) {
     const isDir = isDirectory(item.mode);
     let entry = document.createElement("div");

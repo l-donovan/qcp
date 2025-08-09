@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 
@@ -77,8 +78,10 @@ func NewHandler() Handler {
 var upgrader = websocket.Upgrader{}
 
 func (h Handler) Pick(w http.ResponseWriter, r *http.Request) {
+	var client *ssh.Client
 	var session common.Session
-	var response []byte
+	var executable string
+	var currentDir string
 	var err error
 
 	c, err := upgrader.Upgrade(w, r, nil)
@@ -109,75 +112,130 @@ func (h Handler) Pick(w http.ResponseWriter, r *http.Request) {
 
 		message := string(messageRaw)
 
-		fmt.Printf("I just got: %s\n", message)
-
 		commandRaw, argsRaw, _ := bytes.Cut(messageRaw, []byte(" "))
 
-		switch string(commandRaw) {
-		case "connect":
-			session, err = connect(argsRaw)
+		response := func() []byte {
+			switch string(commandRaw) {
+			case "connect":
+				var request RequestConnection
 
-			if err != nil {
-				response = []byte(err.Error())
-			} else {
-				response = []byte("connected")
+				if err := json.Unmarshal(argsRaw, &request); err != nil {
+					return []byte(err.Error())
+				}
 
-				defer func() {
-					if err := session.Session.Signal(ssh.SIGQUIT); err != nil {
-						fmt.Printf("send SIGQUIT: %v\n", err)
-					}
+				fmt.Printf("Connecting to %s:%s\n", request.Hostname, request.Location)
+				currentDir = request.Location
 
-					if err := session.Session.Close(); err != nil && err != io.EOF {
-						fmt.Printf("close session: %v\n", err)
-					}
-				}()
-			}
-		case "disconnect":
-			session.Session.Signal(ssh.SIGQUIT)
-			session.Session.Close()
+				// New connection means new SSH client.
 
-			response = []byte("disconnected")
-		case "list":
-			entries, err := list(session)
+				client, err = createClient(request)
 
-			if err != nil {
-				response = []byte(err.Error())
-			} else {
+				if err != nil {
+					return []byte(err.Error())
+				}
+
+				// New SSH client means we need to find the qcp executable, assuming
+				// it hasn't been provided in the request.
+
+				executable, err = findExecutable(client, request)
+
+				if err != nil {
+					return []byte(err.Error())
+				}
+
+				cmd := fmt.Sprintf("%s present %s", executable, request.Location)
+				session, err = startSession(client, cmd)
+
+				if err != nil {
+					return []byte(err.Error())
+				}
+
+				// TODO: Put this somewhere.
+				// defer func() {
+				// 	if err := session.Session.Signal(ssh.SIGQUIT); err != nil {
+				// 		fmt.Printf("send SIGQUIT: %v\n", err)
+				// 	}
+
+				// 	if err := session.Session.Close(); err != nil && err != io.EOF {
+				// 		fmt.Printf("close session: %v\n", err)
+				// 	}
+				// }()
+
+				return []byte("connected")
+			case "disconnect":
+				fmt.Printf("Disconnecting\n")
+
+				session.Session.Signal(ssh.SIGQUIT)
+				session.Session.Close()
+
+				return []byte("disconnected")
+			case "list":
+				fmt.Printf("Listing contents of %s\n", currentDir)
+
+				entries, err := list(session)
+
+				if err != nil {
+					return []byte(err.Error())
+				}
+
 				body, err := json.Marshal(entries)
 
 				if err != nil {
-					response = []byte(fmt.Sprintf("marshal dir entries: %v", err))
-				} else {
-					response = append([]byte("list "), body...)
+					return []byte(fmt.Sprintf("marshal dir entries: %v", err))
 				}
-			}
-		case "download":
-			filename, fileContents, err := download(session, argsRaw)
 
-			if err != nil {
-				response = []byte(err.Error())
-			} else {
+				return append([]byte("list "), body...)
+			case "download":
+				var request common.ThinDirEntry
+
+				if err := json.Unmarshal(argsRaw, &request); err != nil {
+					return []byte(err.Error())
+				}
+
+				// Downloads get their own session. This way we can use EOF to easily
+				// determine when a download stream is completed.
+
+				filepath := path.Join(currentDir, request.Name)
+				fmt.Printf("Downloading %s\n", filepath)
+				cmd := fmt.Sprintf("%s serve %s", executable, filepath)
+
+				if request.Mode.IsDir() {
+					cmd += " -d"
+				}
+
+				downloadSession, err := startSession(client, cmd)
+
+				if err != nil {
+					return []byte(err.Error())
+				}
+
+				filename, fileContents, err := download(downloadSession, request)
+
+				if err != nil {
+					return []byte(err.Error())
+				}
+
 				data := base64.StdEncoding.EncodeToString(fileContents)
-				response = append([]byte(fmt.Sprintf("download %s ", filename)), []byte(data)...)
+				return append([]byte(fmt.Sprintf("download %s ", filename)), []byte(data)...)
+			case "enter":
+				var request common.ThinDirEntry
+
+				if err := json.Unmarshal(argsRaw, &request); err != nil {
+					return []byte(err.Error())
+				}
+
+				fmt.Printf("Entering %s\n", request.Name)
+
+				if err := enter(session, request); err != nil {
+					return []byte(err.Error())
+				}
+
+				currentDir = path.Join(currentDir, request.Name)
+				return []byte("entered")
 			}
-		case "enter":
-			err = enter(session, argsRaw)
 
-			if err != nil {
-				response = []byte(err.Error())
-			} else {
-				response = []byte("entered")
-			}
-		case "debug":
-			stdout, _ := io.ReadAll(session.Stdout)
-			stderr, _ := io.ReadAll(session.Stderr)
-
-			response = []byte(fmt.Sprintf("OUT: %s\nERR: %s\n", stdout, stderr))
-		default:
-			response = []byte(fmt.Sprintf("? %s", message))
-		}
-
-		fmt.Printf("I will now respond\n")
+			return []byte(fmt.Sprintf("? %s", message))
+		}()
 
 		if err := c.WriteMessage(mt, response); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -187,38 +245,38 @@ func (h Handler) Pick(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func connect(args []byte) (common.Session, error) {
-	var session common.Session
-	var request RequestConnection
-
-	if err := json.Unmarshal(args, &request); err != nil {
-		return session, fmt.Errorf("unmarshal request body: %v", err)
-	}
-
+func createClient(request RequestConnection) (*ssh.Client, error) {
 	info, err := common.ParseConnectionString(request.Hostname)
 
 	if err != nil {
-		return session, fmt.Errorf("parse connection string: %v", err)
+		return nil, fmt.Errorf("parse connection string: %v", err)
 	}
 
 	remoteClient, err := common.CreateClient(*info)
 
 	if err != nil {
-		return session, fmt.Errorf("create client: %v", err)
+		return nil, fmt.Errorf("create client: %v", err)
 	}
 
+	return remoteClient, nil
+}
+
+func findExecutable(remoteClient *ssh.Client, request RequestConnection) (string, error) {
 	if request.Executable == "" {
 		executable, err := common.FindExecutable(remoteClient, "qcp")
 
 		if err != nil {
-			return session, fmt.Errorf("find executable: %v", err)
+			return "", fmt.Errorf("find executable: %v", err)
 		}
 
-		request.Executable = executable
+		return executable, nil
 	}
 
-	serveCmd := fmt.Sprintf("%s present %s", request.Executable, request.Location)
-	session, err = common.Start(remoteClient, serveCmd)
+	return request.Executable, nil
+}
+
+func startSession(remoteClient *ssh.Client, cmd string) (common.Session, error) {
+	session, err := common.Start(remoteClient, cmd)
 
 	if err != nil {
 		return session, fmt.Errorf("start command: %v", err)
@@ -264,68 +322,21 @@ func list(session common.Session) ([]common.ThinDirEntry, error) {
 	return entries, nil
 }
 
-func download(session common.Session, args []byte) (string, []byte, error) {
-	var request common.ThinDirEntry
-
-	if err := json.Unmarshal(args, &request); err != nil {
-		return "", nil, fmt.Errorf("unmarshal request body: %v", err)
-	}
-
-	if _, err := session.Stdin.Write([]byte{protocol.Select}); err != nil {
-		return "", nil, err
-	}
-
-	if _, err := session.Stdin.Write([]byte(request.Name)); err != nil {
-		return "", nil, err
-	}
-
-	if _, err := session.Stdin.Write([]byte{protocol.EndTransmission}); err != nil {
-		return "", nil, err
-	}
-
+func download(session common.Session, request common.ThinDirEntry) (string, []byte, error) {
 	if request.Mode.IsDir() {
-		// This whole thing is a nasty process involving lots of
-		// buffer re-allocs and magic numbers.
+		// We should move away from sending files over the websocket
+		// connection. In addition to very much not being what websockets
+		// are designed for, we miss out on lots of handy stuff
+		// like support for partial downloads.
 
-		// The problem is that we are streaming gzipped data
-		// without the intention of decompressing it.
-
-		// That's a problem because the only way to determine if
-		// we're done reading gzipped data is by decompressing it.
-
-		// This would remove all the benefit of streaming the data.
+		// I'm thinking we could read the file and then create a one-time
+		// download link which we could then send to the client over the
+		// websocket.
 
 		filename := request.Name + ".tar.gz"
-		rr := bufio.NewReader(session.Stdout)
-		fileContents := make([]byte, 0, 1024*1024)
+		fileContents, err := io.ReadAll(session.Stdout)
 
-		for {
-			chunk, err := rr.ReadBytes(protocol.TerminationSequence[0])
-
-			if err != nil {
-				return filename, nil, fmt.Errorf("read: %v", err)
-			}
-
-			fileContents = append(fileContents, chunk...)
-
-			for i := 1; i < len(protocol.TerminationSequence); i++ {
-				b, err := rr.ReadByte()
-
-				if err != nil {
-					return filename, nil, fmt.Errorf("read %v", err)
-				}
-
-				fileContents = append(fileContents, b)
-
-				if b != protocol.TerminationSequence[i] {
-					break
-				}
-
-				if i == len(protocol.TerminationSequence)-1 {
-					return filename, fileContents[:len(fileContents)-len(protocol.TerminationSequence)], nil
-				}
-			}
-		}
+		return filename, fileContents, err
 	} else {
 		filename := request.Name
 		srcReader := bufio.NewReader(session.Stdout)
@@ -365,13 +376,7 @@ func download(session common.Session, args []byte) (string, []byte, error) {
 	}
 }
 
-func enter(session common.Session, args []byte) error {
-	var request common.ThinDirEntry
-
-	if err := json.Unmarshal(args, &request); err != nil {
-		return fmt.Errorf("unmarshal request body: %v", err)
-	}
-
+func enter(session common.Session, request common.ThinDirEntry) error {
 	if _, err := session.Stdin.Write([]byte{protocol.Enter}); err != nil {
 		return err
 	}

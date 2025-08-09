@@ -82,14 +82,15 @@ func Present(location string, src io.Reader, dst io.WriteCloser) error {
 				return err
 			}
 
+			// TODO: For now, we are ending the process once a file has been chosen for download.
+			// This makes it easy to determine (via EOF) when the file has been transmitted fully.
+			// Maybe in the future we remove this utility entirely and make clients spawn a separate
+			// `qcp download ...` command?
+
 			if info.IsDir() {
-				if err := ServeDirectory(filepath, dst); err != nil {
-					return fmt.Errorf("serve directory: %v", err)
-				}
+				return ServeDirectory(filepath, dst)
 			} else {
-				if err := Serve(filepath, dst); err != nil {
-					return fmt.Errorf("serve: %v", err)
-				}
+				return Serve(filepath, dst)
 			}
 		case protocol.Enter:
 			result, err := srcReader.ReadString(protocol.EndTransmission)

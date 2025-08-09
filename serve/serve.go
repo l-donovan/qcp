@@ -9,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/l-donovan/qcp/protocol"
 )
 
 func AddFileToTarArchive(tarWriter *tar.Writer, filePath string, directory string) error {
@@ -92,6 +90,7 @@ func ServeDirectory(srcDirectory string, dst io.WriteCloser) error {
 
 		// Skip directories. Directories will be created automatically from paths to
 		// each file to tar up.
+		// TODO: This skips empty directories.
 		if d.IsDir() {
 			return nil
 		}
@@ -99,19 +98,6 @@ func ServeDirectory(srcDirectory string, dst io.WriteCloser) error {
 		return AddFileToTarArchive(tarWriter, path, srcDirectory)
 	}); err != nil {
 		return err
-	}
-
-	if err := tarWriter.Close(); err != nil {
-		fmt.Printf("Error closing tar writer: %v\n", err)
-	}
-
-	if err := gzipWriter.Close(); err != nil {
-		fmt.Printf("Error closing gzip writer: %v\n", err)
-	}
-
-	// TODO: I do not love this.
-	if _, err := dst.Write(protocol.TerminationSequence); err != nil {
-		return fmt.Errorf("write termination sequence: %v", err)
 	}
 
 	return nil
