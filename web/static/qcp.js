@@ -98,7 +98,6 @@ function openConnection() {
         return false;
     }
 
-    console.log("hi");
     ws = new WebSocket(endpoint);
 
     ws.onopen = function(evt) {
@@ -111,7 +110,7 @@ function openConnection() {
     }
 
     ws.onmessage = function(evt) {
-        print("< " + evt.data);
+        // print("< " + evt.data);
 
         if (evt.data === "connected") {
             document.getElementById("connect").disabled = true;
@@ -131,6 +130,11 @@ function openConnection() {
             });
         } else if (evt.data === "entered") {
             listFiles();
+        } else if (evt.data.startsWith("download ")) {
+            let components = evt.data.split(" ");
+            let filename = components[1];
+            let filedata = components[2];
+            downloadURI("data:;base64," + filedata, filename);
         }
     }
 
@@ -180,6 +184,20 @@ function download(item) {
 
     print("> " + payload);
     ws.send(payload);
+}
+
+function downloadURI(uri, name) {
+  let link = document.createElement("a");
+  link.download = name;
+  link.href = uri;
+  link.hidden = true;
+  document.body.appendChild(link);
+
+  link.click();
+
+  document.body.removeChild(link);
+
+  delete link;
 }
 
 function enter(item) {

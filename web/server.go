@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,11 +16,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/protocol"
-	"github.com/l-donovan/qcp/receive"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -158,7 +157,8 @@ func (h Handler) Pick(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				response = []byte(err.Error())
 			} else {
-				response = append([]byte(fmt.Sprintf("download %s ", filename)), fileContents...)
+				data := base64.StdEncoding.EncodeToString(fileContents)
+				response = append([]byte(fmt.Sprintf("download %s ", filename)), []byte(data)...)
 			}
 		case "enter":
 			err = enter(session, argsRaw)
@@ -174,10 +174,10 @@ func (h Handler) Pick(w http.ResponseWriter, r *http.Request) {
 
 			response = []byte(fmt.Sprintf("OUT: %s\nERR: %s\n", stdout, stderr))
 		default:
-			response = []byte(fmt.Sprintf(">>>%s<<<", message))
+			response = []byte(fmt.Sprintf("? %s", message))
 		}
 
-		fmt.Printf("I will now write: %#v\n", response)
+		fmt.Printf("I will now respond\n")
 
 		if err := c.WriteMessage(mt, response); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -264,25 +264,6 @@ func list(session common.Session) ([]common.ThinDirEntry, error) {
 	return entries, nil
 }
 
-func splitMagicTerminationSequence(data []byte, atEOF bool) (int, []byte, error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-
-	if i := bytes.Index(data, protocol.TerminationSequence); i >= 0 {
-		// We have a full terminated line.
-		return i + 2, data[:i], nil
-	}
-
-	// If we're at EOF, we have a final, non-terminated line. Return it.
-	if atEOF {
-		return len(data), data, nil
-	}
-
-	// Request more data.
-	return 0, nil, nil
-}
-
 func download(session common.Session, args []byte) (string, []byte, error) {
 	var request common.ThinDirEntry
 
@@ -303,19 +284,48 @@ func download(session common.Session, args []byte) (string, []byte, error) {
 	}
 
 	if request.Mode.IsDir() {
+		// This whole thing is a nasty process involving lots of
+		// buffer re-allocs and magic numbers.
+
+		// The problem is that we are streaming gzipped data
+		// without the intention of decompressing it.
+
+		// That's a problem because the only way to determine if
+		// we're done reading gzipped data is by decompressing it.
+
+		// This would remove all the benefit of streaming the data.
+
 		filename := request.Name + ".tar.gz"
-		scanner := bufio.NewScanner(session.Stdout)
-		scanner.Split(splitMagicTerminationSequence)
+		rr := bufio.NewReader(session.Stdout)
+		fileContents := make([]byte, 0, 1024*1024)
 
-		for scanner.Scan() {
-			return filename, scanner.Bytes(), nil
+		for {
+			chunk, err := rr.ReadBytes(protocol.TerminationSequence[0])
+
+			if err != nil {
+				return filename, nil, fmt.Errorf("read: %v", err)
+			}
+
+			fileContents = append(fileContents, chunk...)
+
+			for i := 1; i < len(protocol.TerminationSequence); i++ {
+				b, err := rr.ReadByte()
+
+				if err != nil {
+					return filename, nil, fmt.Errorf("read %v", err)
+				}
+
+				fileContents = append(fileContents, b)
+
+				if b != protocol.TerminationSequence[i] {
+					break
+				}
+
+				if i == len(protocol.TerminationSequence)-1 {
+					return filename, fileContents[:len(fileContents)-len(protocol.TerminationSequence)], nil
+				}
+			}
 		}
-
-		if err := scanner.Err(); err != nil {
-			return filename, nil, fmt.Errorf("scan for termination sequence: %v", err)
-		}
-
-		return filename, []byte{}, errors.New("empty response")
 	} else {
 		filename := request.Name
 		srcReader := bufio.NewReader(session.Stdout)
@@ -395,187 +405,6 @@ func (h Handler) ServeHome(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
-}
-
-func (h Handler) ServeNewSession(w http.ResponseWriter, r *http.Request) {
-	id := uuid.New()
-	http.Redirect(w, r, fmt.Sprintf("/session/%s", id.String()), http.StatusMovedPermanently)
-}
-
-func (h Handler) ServeSessionHome(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	_, _ = fmt.Fprintf(w, "yippee: %s", id)
-}
-
-func (h Handler) ServeSessionDisconnect(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-
-	exitChan, exists := h.exit[id]
-
-	if !exists {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "handles do not exist for %s", id)
-		return
-	}
-
-	exitChan <- struct{}{}
-}
-
-func (h *Handler) pick(id string, stdin io.WriteCloser, stdout io.Reader) error {
-	// Register our file handles
-	h.handles[id] = files{stdin, stdout}
-	h.exit[id] = make(chan struct{})
-
-	// Don't do anything until we get the exit signal
-	<-h.exit[id]
-
-	// Unregister our handles
-	delete(h.handles, id)
-	delete(h.exit, id)
-
-	// Make sure we clean up after ourselves
-	if _, err := stdin.Write([]byte{protocol.Quit}); err != nil && err != io.EOF {
-		_, _ = fmt.Fprintf(os.Stderr, "error when sending quit message to qcp process on remote host: %v\n", err)
-		return err
-	}
-
-	return nil
-}
-
-func (h Handler) ServeGetFiles(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	handles, exists := h.handles[id]
-
-	if !exists {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "handles do not exist for %s", id)
-		return
-	}
-
-	srcReader := bufio.NewReader(handles.Stdout)
-
-	// List files
-	if _, err := handles.Stdin.Write([]byte{protocol.ListFiles}); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "error sending list files command: %v", err)
-		return
-	}
-
-	// Get output
-	result, err := srcReader.ReadString(protocol.EndTransmission)
-
-	// We don't expect an EOF here, so we treat it as a normal error
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "error reading list files output: %v", err)
-		return
-	}
-
-	var entries []common.ThinDirEntry
-	serializedEntries := strings.Split(strings.TrimSuffix(result, string(protocol.EndTransmission)), string(protocol.FileSeparator))
-
-	for _, rawEntry := range serializedEntries {
-		// This happens in empty directories because strings.Split("", "<separator>") returns []string{""}, not []string{}
-		if rawEntry == "" {
-			continue
-		}
-
-		entry, err := common.DeserializeDirEntry(rawEntry)
-
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, "error deserializing dir entry: %v", err)
-			return
-		}
-
-		entries = append(entries, *entry)
-	}
-
-	body, err := json.Marshal(entries)
-
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "error marshaling dir entries: %v", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
-}
-
-func (h Handler) ServeSelectFile(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-
-	var request common.ThinDirEntry
-
-	body, err := io.ReadAll(r.Body)
-
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "failed to read request body: %v", err)
-		return
-	}
-
-	if err := json.Unmarshal(body, &request); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "failed to unmarshal request body: %v", err)
-		return
-	}
-
-	handles, exists := h.handles[id]
-
-	if !exists {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "handles do not exist for %s", id)
-		return
-	}
-
-	if _, err := handles.Stdin.Write([]byte{protocol.Select}); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "error sending select file command: %v", err)
-		return
-	}
-
-	if _, err := handles.Stdin.Write([]byte(request.Name)); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "error sending filename: %v", err)
-		return
-	}
-
-	if _, err := handles.Stdin.Write([]byte{protocol.EndTransmission}); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "error sending end transmission: %v", err)
-		return
-	}
-
-	if request.Mode.IsDir() {
-		err = receive.ReceiveDirectory(request.Name, handles.Stdout, func(format string, a ...any) (n int, err error) {
-			// TODO: we want to log the output somewhere
-			return 0, nil
-		})
-	} else {
-		err = receive.Receive(request.Name, handles.Stdout)
-	}
-
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "error receiving file: %v", err)
-		return
-	}
-
-	// body, err := json.Marshal(entries)
-
-	// if err != nil {
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	_, _ = fmt.Fprintf(w, "error marshaling dir entries: %v", err)
-	// 	return
-	// }
-
-	// w.WriteHeader(http.StatusOK)
-	// _, _ = w.Write(body)
-}
-
-func (h Handler) ServeEnterDirectory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) CloseClients() {

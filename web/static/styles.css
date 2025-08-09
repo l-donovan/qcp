@@ -4,7 +4,6 @@ body {
 
 .entry span {
     font-family: monospace;
-    cursor: pointer;
 }
 
 .red {
@@ -13,6 +12,10 @@ body {
 
 .yellow {
     color: yellow;
+}
+
+.entry .name, .entry .download {
+    cursor: pointer;
 }
 
 .blue, .entry[directory="true"] .name {
