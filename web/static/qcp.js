@@ -67,15 +67,15 @@ function createEntry(item) {
     const isDir = isDirectory(item.mode);
     let entry = document.createElement("div");
     entry.classList.add("entry");
-    entry.setAttribute("directory", isDirectory(item.mode) ? "true" : "false");
+    entry.setAttribute("directory", isDir ? "true" : "false");
 
-    let download = document.createElement("span");
-    download.textContent = "⬇";
-    download.classList.add("download");
-    download.onclick = function() {
-        select(item);
+    let downloadButton = document.createElement("span");
+    downloadButton.textContent = "⬇";
+    downloadButton.classList.add("download");
+    downloadButton.onclick = function() {
+        download(item);
     };
-    entry.appendChild(download);
+    entry.appendChild(downloadButton);
 
     let perms = document.createElement("span");
     perms.classList.add("perm");
@@ -98,6 +98,7 @@ function openConnection() {
         return false;
     }
 
+    console.log("hi");
     ws = new WebSocket(endpoint);
 
     ws.onopen = function(evt) {
@@ -134,6 +135,7 @@ function openConnection() {
     }
 
     ws.onerror = function(evt) {
+        console.log(evt);
         print("! " + evt.data);
     }
 
@@ -169,12 +171,12 @@ function listFiles() {
     ws.send("list");
 }
 
-function select(item) {
+function download(item) {
     if (!ws) {
         return;
     }
 
-    const payload = "select " + JSON.stringify(item);
+    const payload = "download " + JSON.stringify(item);
 
     print("> " + payload);
     ws.send(payload);

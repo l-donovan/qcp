@@ -75,19 +75,19 @@ func Present(location string, src io.Reader, dst io.WriteCloser) error {
 			}
 
 			entryName := strings.TrimSuffix(result, string(protocol.EndTransmission))
-			location = path.Join(location, entryName)
-			info, err := os.Stat(location)
+			filepath := path.Join(location, entryName)
+			info, err := os.Stat(filepath)
 
 			if err != nil {
 				return err
 			}
 
 			if info.IsDir() {
-				if err := ServeDirectory(location, dst); err != nil {
+				if err := ServeDirectory(filepath, dst); err != nil {
 					return fmt.Errorf("serve directory: %v", err)
 				}
 			} else {
-				if err := Serve(location, dst); err != nil {
+				if err := Serve(filepath, dst); err != nil {
 					return fmt.Errorf("serve: %v", err)
 				}
 			}

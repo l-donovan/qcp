@@ -8,18 +8,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
-	"github.com/l-donovan/qcp/common"
-	"github.com/l-donovan/qcp/protocol"
-	"github.com/l-donovan/qcp/receive"
-	"golang.org/x/crypto/ssh"
 	"html/template"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
+	"github.com/l-donovan/qcp/common"
+	"github.com/l-donovan/qcp/protocol"
+	"github.com/l-donovan/qcp/receive"
+	"golang.org/x/crypto/ssh"
 )
 
 //go:embed "index.gohtml"
@@ -65,15 +66,8 @@ func NewHandler() Handler {
 	}
 
 	mux := http.NewServeMux()
-	// mux.HandleFunc("/", h.ServeNewSession)
-	// mux.HandleFunc("/session/{id}", h.ServeSessionHome)
-	// mux.HandleFunc("/session/{id}/connect", h.ServeSessionConnect)
-	// mux.HandleFunc("/session/{id}/disconnect", h.ServeSessionDisconnect)
-	// mux.HandleFunc("/session/{id}/get-files", h.ServeGetFiles)
-	// mux.HandleFunc("/session/{id}/select-file", h.ServeSelectFile)
-	// mux.HandleFunc("/session/{id}/enter-directory/{name}", h.ServeEnterDirectory)
-	mux.HandleFunc("/session", h.Pick)
 	mux.HandleFunc("/", h.ServeHome)
+	mux.HandleFunc("/session", h.Pick)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 
 	h.mux = mux
@@ -158,16 +152,14 @@ func (h Handler) Pick(w http.ResponseWriter, r *http.Request) {
 					response = append([]byte("list "), body...)
 				}
 			}
-		case "select":
-			fileContents, err := pick(session, argsRaw)
+		case "download":
+			filename, fileContents, err := download(session, argsRaw)
 
 			if err != nil {
 				response = []byte(err.Error())
 			} else {
-				response = []byte("selected")
+				response = append([]byte(fmt.Sprintf("download %s ", filename)), fileContents...)
 			}
-
-			fmt.Printf("File contents: %v\n", fileContents)
 		case "enter":
 			err = enter(session, argsRaw)
 
@@ -278,13 +270,12 @@ func splitMagicTerminationSequence(data []byte, atEOF bool) (int, []byte, error)
 	}
 
 	if i := bytes.Index(data, protocol.TerminationSequence); i >= 0 {
-		// We have a full newline-terminated line.
+		// We have a full terminated line.
 		return i + 2, data[:i], nil
 	}
 
 	// If we're at EOF, we have a final, non-terminated line. Return it.
 	if atEOF {
-		fmt.Printf("INCOMPLETE\n")
 		return len(data), data, nil
 	}
 
@@ -292,78 +283,76 @@ func splitMagicTerminationSequence(data []byte, atEOF bool) (int, []byte, error)
 	return 0, nil, nil
 }
 
-func pick(session common.Session, args []byte) ([]byte, error) {
+func download(session common.Session, args []byte) (string, []byte, error) {
 	var request common.ThinDirEntry
 
 	if err := json.Unmarshal(args, &request); err != nil {
-		return nil, fmt.Errorf("unmarshal request body: %v", err)
+		return "", nil, fmt.Errorf("unmarshal request body: %v", err)
 	}
 
-	fmt.Printf("Got: %#v\n", request)
-
 	if _, err := session.Stdin.Write([]byte{protocol.Select}); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	if _, err := session.Stdin.Write([]byte(request.Name)); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	if _, err := session.Stdin.Write([]byte{protocol.EndTransmission}); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	if request.Mode.IsDir() {
-		fmt.Printf("Reading directory\n")
+		filename := request.Name + ".tar.gz"
 		scanner := bufio.NewScanner(session.Stdout)
 		scanner.Split(splitMagicTerminationSequence)
 
 		for scanner.Scan() {
-			return scanner.Bytes(), nil
+			return filename, scanner.Bytes(), nil
 		}
 
 		if err := scanner.Err(); err != nil {
-			return nil, fmt.Errorf("scan for termination sequence: %v", err)
+			return filename, nil, fmt.Errorf("scan for termination sequence: %v", err)
 		}
+
+		return filename, []byte{}, errors.New("empty response")
 	} else {
-		fmt.Printf("Reading file\n")
+		filename := request.Name
 		srcReader := bufio.NewReader(session.Stdout)
 
 		fileSizeStr, err := srcReader.ReadString('\n')
 
 		if err != nil {
-			return nil, err
+			return filename, nil, err
 		}
 
 		fileSize, err := strconv.Atoi(strings.TrimSpace(fileSizeStr))
 
 		if err != nil {
-			return nil, err
+			return filename, nil, err
 		}
 
 		fileModeStr, err := srcReader.ReadString('\n')
 
 		if err != nil {
-			return nil, err
+			return filename, nil, err
 		}
 
 		// I don't think we can actually do anything meaningful with the file mode here.
 		_, err = strconv.Atoi(strings.TrimSpace(fileModeStr))
 
 		if err != nil {
-			return nil, err
+			return filename, nil, err
 		}
 
 		fileContents := make([]byte, fileSize)
 
 		if _, err := io.ReadFull(srcReader, fileContents); err != nil {
-			return nil, err
+			return filename, nil, err
 		}
 
-		return fileContents, nil
+		return filename, fileContents, nil
 	}
-
-	return nil, nil
 }
 
 func enter(session common.Session, args []byte) error {
