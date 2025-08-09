@@ -111,25 +111,25 @@ func GetBinary(client *ssh.Client, release, location string) error {
 	hostOs, err := getOs(client)
 
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("get OS: %v", err)
 	}
 
 	hostArch, err := getArch(client)
 
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("get arch: %v", err)
 	}
 
 	url, err := getBinaryUrl(release, hostOs, hostArch)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("get qcp binary URL: %v", err)
 	}
 
 	resp, err := http.Get(url)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("get binary: %v", err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -145,7 +145,7 @@ func GetBinary(client *ssh.Client, release, location string) error {
 	gzipReader, err := gzip.NewReader(resp.Body)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("create gzip reader: %v", err)
 	}
 
 	tarReader := tar.NewReader(gzipReader)
@@ -158,7 +158,7 @@ func GetBinary(client *ssh.Client, release, location string) error {
 		}
 
 		if err != nil {
-			return err
+			return fmt.Errorf("read next item in tarball: %v", err)
 		}
 
 		if header.Name == "qcp" {

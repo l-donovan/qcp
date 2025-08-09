@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>qcp</title>
+    <link rel="stylesheet" href="static/styles.css">
+</head>
+<body>
+<div>
+    <div>
+        <label for="hostname">Hostname</label><input id="hostname" type="text" placeholder="hostname">
+        <label for="location">Location</label><input id="location" type="text" placeholder="/your/path/here">
+        <button id="connect" onclick="connect()">Connect</button>
+        <button id="disconnect" onclick="disconnect()" disabled>Disconnect</button>
+        <button id="debug" onclick="debug()">Debug</button>
+
+    </div>
+    <div id="files"></div>
+    <div id="output"></div>
+</div>
+<button id="close" onclick="closeConnection()">Close</button>
+<script src="static/qcp.js"></script>
+<script>
+    const endpoint = "{{.WebsocketEndpoint}}";
+    openConnection();
+</script>
+</body>
+</html>

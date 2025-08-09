@@ -22,8 +22,7 @@ func DownloadDirectory(client *ssh.Client, srcDirectory, dstDirectory string, ex
 	serveCmd := fmt.Sprintf("%s serve -d %s", executable, srcDirectory)
 
 	return common.RunWithPipes(client, serveCmd, func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
-		go common.LogErrors(stderr)
-		return ReceiveDirectory(dstDirectory, stdout)
+		return ReceiveDirectory(dstDirectory, stdout, fmt.Printf)
 	})
 }
 
@@ -41,7 +40,6 @@ func Download(client *ssh.Client, srcFilePath, dstFilePath string, executable st
 	serveCmd := fmt.Sprintf("%s serve %s", executable, srcFilePath)
 
 	return common.RunWithPipes(client, serveCmd, func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
-		go common.LogErrors(stderr)
 		return Receive(dstFilePath, stdout)
 	})
 }

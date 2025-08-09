@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"fmt"
+	"github.com/l-donovan/qcp/protocol"
 	"io"
 	"io/fs"
 	"os"
@@ -77,7 +78,7 @@ func ServeDirectory(srcDirectory string, dst io.WriteCloser) error {
 
 	// TODO: Might be nice to stick file count or archive size at the top of our stream for determining progress.
 
-	err := filepath.WalkDir(srcDirectory, func(path string, d fs.DirEntry, err error) error {
+	if err := filepath.WalkDir(srcDirectory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -95,10 +96,13 @@ func ServeDirectory(srcDirectory string, dst io.WriteCloser) error {
 		}
 
 		return AddFileToTarArchive(tarWriter, path, srcDirectory)
-	})
-
-	if err != nil {
+	}); err != nil {
 		return err
+	}
+
+	// TODO: I do not love this.
+	if _, err := dst.Write(protocol.TerminationSequence); err != nil {
+		return fmt.Errorf("write magic termination sequence: %v", err)
 	}
 
 	return nil
@@ -114,9 +118,8 @@ func Serve(srcFilePath string, dst io.WriteCloser) error {
 
 	// One line containing the file size in Bytes
 	fileSize := len(fileBytes)
-	_, err = fmt.Fprintf(dst, "%d\n", fileSize)
 
-	if err != nil {
+	if _, err := fmt.Fprintf(dst, "%d\n", fileSize); err != nil {
 		return err
 	}
 
@@ -130,16 +133,13 @@ func Serve(srcFilePath string, dst io.WriteCloser) error {
 	// Normally this is represented in octal, but we're sending it over the wire in base-10 for
 	// more straightforward [un]marshalling.
 	fileMode := uint32(fileInfo.Mode())
-	_, err = fmt.Fprintf(dst, "%d\n", fileMode)
 
-	if err != nil {
+	if _, err := fmt.Fprintf(dst, "%d\n", fileMode); err != nil {
 		return err
 	}
 
 	// The file contents
-	_, err = dst.Write(fileBytes)
-
-	if err != nil {
+	if _, err = dst.Write(fileBytes); err != nil {
 		return err
 	}
 

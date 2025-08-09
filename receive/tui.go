@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -114,12 +115,12 @@ func (d delegateKeyMap) FullHelp() [][]key.Binding {
 func newDelegateKeyMap() *delegateKeyMap {
 	return &delegateKeyMap{
 		choose: key.NewBinding(
-			key.WithKeys("enter"),
-			key.WithHelp("enter", "choose"),
+			key.WithKeys("e"),
+			key.WithHelp("e", "choose"),
 		),
 		enter: key.NewBinding(
-			key.WithKeys("e"),
-			key.WithHelp("e", "enter"),
+			key.WithKeys("enter"),
+			key.WithHelp("enter", "enter"),
 		),
 		up: key.NewBinding(
 			key.WithKeys("u"),
@@ -162,6 +163,7 @@ func newListKeyMap() *listKeyMap {
 }
 
 type model struct {
+	path         *string
 	list         list.Model
 	keys         *listKeyMap
 	delegateKeys *delegateKeyMap
@@ -169,13 +171,14 @@ type model struct {
 	stdout       io.Reader
 }
 
-func newModel(stdin io.WriteCloser, stdout io.Reader) (model, error) {
+func newModel(stdin io.WriteCloser, stdout io.Reader, location string) (model, error) {
 	var (
 		delegateKeys = newDelegateKeyMap()
 		listKeys     = newListKeyMap()
 	)
 
 	m := model{
+		path:         &location,
 		stdin:        stdin,
 		stdout:       stdout,
 		delegateKeys: delegateKeys,
@@ -191,7 +194,7 @@ func newModel(stdin io.WriteCloser, stdout io.Reader) (model, error) {
 	// Setup list
 	delegate := newItemDelegate(delegateKeys, &m)
 	itemList := list.New(entries, delegate, 0, 0)
-	itemList.Title = "Entries"
+	itemList.Title = fmt.Sprintf("[%s]", *m.path)
 	itemList.Styles.Title = titleStyle
 	itemList.AdditionalFullHelpKeys = func() []key.Binding {
 		return []key.Binding{
@@ -248,6 +251,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// This will also call our delegate's update function.
+	m.list.Title = fmt.Sprintf("[%s]", *m.path)
 	newListModel, cmd := m.list.Update(msg)
 	m.list = newListModel
 	cmds = append(cmds, cmd)
@@ -296,7 +300,7 @@ func (m model) GetFiles() ([]list.Item, error) {
 	return entries, nil
 }
 
-func (m model) SelectFile(entry common.ThinDirEntry) error {
+func (m *model) SelectFile(entry common.ThinDirEntry) error {
 	if _, err := m.stdin.Write([]byte{protocol.Select}); err != nil {
 		return err
 	}
@@ -310,13 +314,19 @@ func (m model) SelectFile(entry common.ThinDirEntry) error {
 	}
 
 	if entry.Mode.IsDir() {
-		return ReceiveDirectory("/git/l-donovan/qcp/dummy", m.stdout)
+		err := ReceiveDirectory(entry.Name, m.stdout, func(format string, a ...any) (n int, err error) {
+			// TODO: we want to log the output somewhere, maybe in a modal?
+			return 0, nil
+		})
+
+		return err
 	} else {
-		return Receive("/git/l-donovan/qcp/dummy", m.stdout)
+		err := Receive(entry.Name, m.stdout)
+		return err
 	}
 }
 
-func (m model) EnterDirectory(location string) error {
+func (m *model) EnterDirectory(location string) error {
 	if _, err := m.stdin.Write([]byte{protocol.Enter}); err != nil {
 		return err
 	}
@@ -329,10 +339,12 @@ func (m model) EnterDirectory(location string) error {
 		return err
 	}
 
+	*m.path = path.Join(*m.path, location)
+
 	return nil
 }
 
-func pick(stdin io.WriteCloser, stdout io.Reader) error {
+func pick(stdin io.WriteCloser, stdout io.Reader, location string) error {
 	defer func() {
 		// Make sure we clean up after ourselves
 		if _, err := stdin.Write([]byte{protocol.Quit}); err != nil && err != io.EOF {
@@ -340,7 +352,7 @@ func pick(stdin io.WriteCloser, stdout io.Reader) error {
 		}
 	}()
 
-	app, err := newModel(stdin, stdout)
+	app, err := newModel(stdin, stdout, location)
 
 	if err != nil {
 		return err

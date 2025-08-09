@@ -2,12 +2,15 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"os"
+
 	"github.com/l-donovan/goparse"
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/receive"
 	"github.com/l-donovan/qcp/serve"
 	"github.com/l-donovan/qcp/sideload"
-	"os"
+	"github.com/l-donovan/qcp/web"
 )
 
 func exitWithMessage(format string, a ...any) {
@@ -64,6 +67,10 @@ func main() {
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.AddValueFlag("release", 'r', "qcp release to sideload", "version", "latest")
 			s.AddValueFlag("location", 'l', "target location for qcp executable on host", "path", "$HOME/bin/qcp")
+		},
+		"web": func(s *goparse.Parser) {
+			// Web interface mode
+			s.AddValueFlag("hostname", 'h', "hostname for web interface", "address", ":8543")
 		},
 	})
 
@@ -151,15 +158,11 @@ func main() {
 		}()
 
 		if isDirectory {
-			err := serve.UploadDirectory(remoteClient, srcFilePath, dstFilePath, executable)
-
-			if err != nil {
+			if err := serve.UploadDirectory(remoteClient, srcFilePath, dstFilePath, executable); err != nil {
 				exitWithError(err)
 			}
 		} else {
-			err = serve.Upload(remoteClient, srcFilePath, dstFilePath, executable)
-
-			if err != nil {
+			if err := serve.Upload(remoteClient, srcFilePath, dstFilePath, executable); err != nil {
 				exitWithError(err)
 			}
 		}
@@ -168,15 +171,11 @@ func main() {
 		isDirectory := args["directory"].(bool)
 
 		if isDirectory {
-			err := receive.ReceiveDirectory(dstFilePath, os.Stdin)
-
-			if err != nil {
+			if err := receive.ReceiveDirectory(dstFilePath, os.Stdin, fmt.Printf); err != nil {
 				exitWithError(err)
 			}
 		} else {
-			err := receive.Receive(dstFilePath, os.Stdin)
-
-			if err != nil {
+			if err := receive.Receive(dstFilePath, os.Stdin); err != nil {
 				exitWithError(err)
 			}
 		}
@@ -203,9 +202,7 @@ func main() {
 			}
 		}()
 
-		err = receive.Pick(remoteClient, location, executable)
-
-		if err != nil {
+		if err := receive.Pick(remoteClient, location, executable); err != nil {
 			exitWithError(err)
 		}
 	case "present":
@@ -242,6 +239,23 @@ func main() {
 		err = sideload.GetBinary(remoteClient, release, location)
 
 		if err != nil {
+			exitWithError(err)
+		}
+
+		fmt.Printf("Successfully installed \"%s\" on %s at %s\n", release, connectionString, location)
+	case "web":
+		handler := web.NewHandler()
+
+		server := &http.Server{
+			Addr:    ":8543",
+			Handler: handler,
+		}
+
+		defer handler.CloseClients()
+
+		fmt.Printf("Serving on %s\n", server.Addr)
+
+		if err := server.ListenAndServe(); err != nil {
 			exitWithError(err)
 		}
 	}

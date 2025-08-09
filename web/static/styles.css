@@ -1,0 +1,48 @@
+body {
+    background: black;
+}
+
+.entry span {
+    font-family: monospace;
+    cursor: pointer;
+}
+
+.red {
+    color: orangered;
+}
+
+.yellow {
+    color: yellow;
+}
+
+.blue, .entry[directory="true"] .name {
+    color: deepskyblue;
+}
+
+.green, .entry[directory="false"] .name, .download {
+    color: limegreen;
+}
+
+.entry .download, .entry .perm {
+    margin-right: 1ch;
+}
+
+#files {
+    background: black;
+    color: white;
+    height: 50vh;
+    overflow-y: auto;
+    padding: 0.5rem;
+    border: 1px dashed black;
+}
+
+#output {
+    background: black;
+    color: limegreen;
+    font-family: monospace;
+    height: 20vh;
+    overflow-y: auto;
+    padding: 0.5rem;
+    border: 1px dashed limegreen;
+    width: calc(100% - 1rem - 2px);
+}

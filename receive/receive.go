@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -14,7 +13,9 @@ import (
 	"strings"
 )
 
-func ReceiveDirectory(dstDirectory string, src io.Reader) error {
+type LogFunc func(fmt string, a ...any) (n int, err error)
+
+func ReceiveDirectory(dstDirectory string, src io.Reader, log LogFunc) error {
 	gzipReader, err := gzip.NewReader(src)
 
 	if err != nil {
@@ -27,7 +28,7 @@ func ReceiveDirectory(dstDirectory string, src io.Reader) error {
 		header, err := tarReader.Next()
 
 		if err == io.EOF {
-			fmt.Println("All files received")
+			log("All files received")
 			break
 		}
 
@@ -37,23 +38,17 @@ func ReceiveDirectory(dstDirectory string, src io.Reader) error {
 
 		var fileBuf bytes.Buffer
 		filePath := path.Join(dstDirectory, header.Name)
-		fmt.Printf("Receiving %s\n", header.Name)
+		log("Receiving %s\n", header.Name)
 
-		_, err = io.Copy(&fileBuf, tarReader)
-
-		if err != nil {
+		if _, err := io.Copy(&fileBuf, tarReader); err != nil {
 			return err
 		}
 
-		err = os.MkdirAll(filepath.Dir(filePath), 0o777)
-
-		if err != nil {
+		if err := os.MkdirAll(filepath.Dir(filePath), 0o777); err != nil {
 			return err
 		}
 
-		err = os.WriteFile(filePath, fileBuf.Bytes(), header.FileInfo().Mode())
-
-		if err != nil {
+		if err := os.WriteFile(filePath, fileBuf.Bytes(), header.FileInfo().Mode()); err != nil {
 			return err
 		}
 	}
@@ -89,15 +84,12 @@ func Receive(dstFilePath string, src io.Reader) error {
 	}
 
 	fileContents := make([]byte, fileSize)
-	_, err = io.ReadFull(srcReader, fileContents)
 
-	if err != nil {
+	if _, err := io.ReadFull(srcReader, fileContents); err != nil {
 		return err
 	}
 
-	err = os.WriteFile(dstFilePath, fileContents, os.FileMode(fileMode))
-
-	if err != nil {
+	if err := os.WriteFile(dstFilePath, fileContents, os.FileMode(fileMode)); err != nil {
 		return err
 	}
 

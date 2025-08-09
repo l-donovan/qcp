@@ -10,8 +10,8 @@ import (
 )
 
 type ThinDirEntry struct {
-	Name string
-	Mode fs.FileMode
+	Name string      `json:"name"`
+	Mode fs.FileMode `json:"mode"`
 }
 
 func permBits(bits uint32) string {

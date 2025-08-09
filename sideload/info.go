@@ -23,7 +23,7 @@ func getRawOs(client *ssh.Client) (string, error) {
 		return "", err
 	}
 
-	out, err := session.Output("echo $OSTYPE")
+	out, err := session.Output("uname")
 
 	if err != nil {
 		return "", err
@@ -55,11 +55,11 @@ func getOs(client *ssh.Client) (string, error) {
 		return "", err
 	}
 
-	if strings.HasPrefix(rawOs, "linux-gnu") {
+	if strings.HasPrefix(strings.ToLower(rawOs), "linux") {
 		return OsLinux, nil
 	}
 
-	if strings.HasPrefix(rawOs, "darwin") {
+	if strings.HasPrefix(strings.ToLower(rawOs), "darwin") {
 		return OsMac, nil
 	}
 
@@ -78,5 +78,5 @@ func getArch(client *ssh.Client) (string, error) {
 		return ArchAmd64, nil
 	}
 
-	return ArchUnknown, nil
+	return ArchUnknown, fmt.Errorf("unknown architecture %s", rawArch)
 }

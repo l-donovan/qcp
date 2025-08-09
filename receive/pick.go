@@ -12,7 +12,7 @@ func Pick(client *ssh.Client, location string, executable string) error {
 		foundExecutable, err := common.FindExecutable(client, "qcp")
 
 		if err != nil {
-			return err
+			return fmt.Errorf("find qcp executable: %v", err)
 		}
 
 		executable = foundExecutable
@@ -21,7 +21,6 @@ func Pick(client *ssh.Client, location string, executable string) error {
 	serveCmd := fmt.Sprintf("%s present %s", executable, location)
 
 	return common.RunWithPipes(client, serveCmd, func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
-		go common.LogErrors(stderr)
-		return pick(stdin, stdout)
+		return pick(stdin, stdout, location)
 	})
 }

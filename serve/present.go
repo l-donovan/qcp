@@ -83,9 +83,13 @@ func Present(location string, src io.Reader, dst io.WriteCloser) error {
 			}
 
 			if info.IsDir() {
-				return ServeDirectory(location, dst)
+				if err := ServeDirectory(location, dst); err != nil {
+					return fmt.Errorf("serve directory: %v", err)
+				}
 			} else {
-				return Serve(location, dst)
+				if err := Serve(location, dst); err != nil {
+					return fmt.Errorf("serve: %v", err)
+				}
 			}
 		case protocol.Enter:
 			result, err := srcReader.ReadString(protocol.EndTransmission)
