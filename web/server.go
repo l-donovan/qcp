@@ -3,56 +3,39 @@ package web
 import (
 	"bufio"
 	"bytes"
-	"context"
 	_ "embed"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/protocol"
 	"golang.org/x/crypto/ssh"
 )
 
-//go:embed "index.gohtml"
-var indexHTML string
-
-type files struct {
-	Stdin  io.WriteCloser
-	Stdout io.Reader
-}
+var (
+	//go:embed "index.gohtml"
+	indexHTML string
+	tmpl      *template.Template
+	upgrader  = websocket.Upgrader{}
+)
 
 type Handler struct {
 	mux     *http.ServeMux
-	clients map[string]*ssh.Client
-	handles map[string]files
-	exit    map[string]chan struct{}
+	clients []*ssh.Client
+	files   *sync.Map
 }
-
-type key int
-
-var clientKey key
-
-func GetClient(ctx context.Context) *ssh.Client {
-	return ctx.Value(clientKey).(*ssh.Client)
-}
-
-func SetClient(ctx context.Context, client *ssh.Client) context.Context {
-	return context.WithValue(ctx, clientKey, client)
-}
-
-var (
-	tmpl *template.Template
-)
 
 func init() {
 	tmpl = template.Must(template.New("index").Parse(indexHTML))
@@ -60,14 +43,14 @@ func init() {
 
 func NewHandler() Handler {
 	h := Handler{
-		clients: map[string]*ssh.Client{},
-		handles: map[string]files{},
-		exit:    map[string]chan struct{}{},
+		clients: []*ssh.Client{},
+		files:   new(sync.Map),
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", h.ServeHome)
-	mux.HandleFunc("/session", h.Pick)
+	mux.HandleFunc("/", ServeHome)
+	mux.HandleFunc("/session", h.ServeSession)
+	mux.HandleFunc("/file/{id}", h.ServeFile)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 
 	h.mux = mux
@@ -75,9 +58,7 @@ func NewHandler() Handler {
 	return h
 }
 
-var upgrader = websocket.Upgrader{}
-
-func (h Handler) Pick(w http.ResponseWriter, r *http.Request) {
+func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 	var client *ssh.Client
 	var session common.Session
 	var executable string
@@ -209,14 +190,23 @@ func (h Handler) Pick(w http.ResponseWriter, r *http.Request) {
 					return []byte(err.Error())
 				}
 
-				filename, fileContents, err := download(downloadSession, request)
+				downloadInfo, err := download(downloadSession, request)
 
 				if err != nil {
 					return []byte(err.Error())
 				}
 
-				data := base64.StdEncoding.EncodeToString(fileContents)
-				return append([]byte(fmt.Sprintf("download %s ", filename)), []byte(data)...)
+				id, err := uuid.NewRandom()
+
+				if err != nil {
+					return []byte(err.Error())
+				}
+
+				downloadLink := fmt.Sprintf("/file/%s", id.String())
+				h.files.Store(id.String(), downloadInfo)
+				fmt.Printf("Created new download link for %s: %s\n", filepath, downloadLink)
+
+				return []byte(fmt.Sprintf("download %s", downloadLink))
 			case "enter":
 				var request common.ThinDirEntry
 
@@ -322,60 +312,6 @@ func list(session common.Session) ([]common.ThinDirEntry, error) {
 	return entries, nil
 }
 
-func download(session common.Session, request common.ThinDirEntry) (string, []byte, error) {
-	if request.Mode.IsDir() {
-		// We should move away from sending files over the websocket
-		// connection. In addition to very much not being what websockets
-		// are designed for, we miss out on lots of handy stuff
-		// like support for partial downloads.
-
-		// I'm thinking we could read the file and then create a one-time
-		// download link which we could then send to the client over the
-		// websocket.
-
-		filename := request.Name + ".tar.gz"
-		fileContents, err := io.ReadAll(session.Stdout)
-
-		return filename, fileContents, err
-	} else {
-		filename := request.Name
-		srcReader := bufio.NewReader(session.Stdout)
-
-		fileSizeStr, err := srcReader.ReadString('\n')
-
-		if err != nil {
-			return filename, nil, err
-		}
-
-		fileSize, err := strconv.Atoi(strings.TrimSpace(fileSizeStr))
-
-		if err != nil {
-			return filename, nil, err
-		}
-
-		fileModeStr, err := srcReader.ReadString('\n')
-
-		if err != nil {
-			return filename, nil, err
-		}
-
-		// I don't think we can actually do anything meaningful with the file mode here.
-		_, err = strconv.Atoi(strings.TrimSpace(fileModeStr))
-
-		if err != nil {
-			return filename, nil, err
-		}
-
-		fileContents := make([]byte, fileSize)
-
-		if _, err := io.ReadFull(srcReader, fileContents); err != nil {
-			return filename, nil, err
-		}
-
-		return filename, fileContents, nil
-	}
-}
-
 func enter(session common.Session, request common.ThinDirEntry) error {
 	if _, err := session.Stdin.Write([]byte{protocol.Enter}); err != nil {
 		return err
@@ -392,11 +328,87 @@ func enter(session common.Session, request common.ThinDirEntry) error {
 	return nil
 }
 
-type HomeInput struct {
-	WebsocketEndpoint string
+func download(session common.Session, request common.ThinDirEntry) (DownloadInfo, error) {
+	if request.Mode.IsDir() {
+		return DownloadInfo{request.Name + ".tar.gz", session.Stdout}, nil
+	} else {
+		srcReader := bufio.NewReader(session.Stdout)
+		downloadInfo := DownloadInfo{Filename: request.Name, Contents: srcReader}
+
+		fileSizeStr, err := srcReader.ReadString('\n')
+
+		if err != nil {
+			return downloadInfo, err
+		}
+
+		// TODO: Can we report the filesize to get a progress bar?
+		_, err = strconv.Atoi(strings.TrimSpace(fileSizeStr))
+
+		if err != nil {
+			return downloadInfo, err
+		}
+
+		fileModeStr, err := srcReader.ReadString('\n')
+
+		if err != nil {
+			return downloadInfo, err
+		}
+
+		// I don't think we can actually do anything meaningful with the file mode here.
+		_, err = strconv.Atoi(strings.TrimSpace(fileModeStr))
+
+		if err != nil {
+			return downloadInfo, err
+		}
+
+		return downloadInfo, nil
+	}
 }
 
-func (h Handler) ServeHome(w http.ResponseWriter, r *http.Request) {
+func (h Handler) ServeFile(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	downloadInfoRaw, ok := h.files.LoadAndDelete(id)
+
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, "could not find download with id %s", id)
+		return
+	}
+
+	downloadInfo := downloadInfoRaw.(DownloadInfo)
+	flusher, ok := w.(http.Flusher)
+
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "no good")
+		return
+	}
+
+	mimeType := mime.TypeByExtension(path.Ext(downloadInfo.Filename))
+
+	if mimeType == "" {
+		mimeType = "text/plain"
+	}
+
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", "attachment;filename="+downloadInfo.Filename)
+
+	for {
+		if _, err := io.CopyN(w, downloadInfo.Contents, 1024); err != nil {
+			if err != io.EOF {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = fmt.Fprintf(w, "download: %v", err)
+			}
+
+			return
+		}
+
+		flusher.Flush()
+	}
+}
+
+func ServeHome(w http.ResponseWriter, r *http.Request) {
 	input := HomeInput{
 		WebsocketEndpoint: "/session",
 	}
@@ -413,11 +425,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) CloseClients() {
-	for id, client := range h.clients {
-		if exitChan, exists := h.exit[id]; exists {
-			exitChan <- struct{}{}
-		}
-
+	for _, client := range h.clients {
 		// This is poorly designed and will probably be a race condition
 
 		if err := client.Close(); err != nil {

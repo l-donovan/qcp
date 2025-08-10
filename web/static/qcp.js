@@ -124,9 +124,8 @@ function openConnection() {
             listFiles();
         } else if (evt.data.startsWith("download ")) {
             let components = evt.data.split(" ");
-            let filename = components[1];
-            let filedata = components[2];
-            downloadURI("data:;base64," + filedata, filename);
+            let link = components[1];
+            downloadURI(link);
         }
     }
 
@@ -178,17 +177,14 @@ function download(item) {
     ws.send(payload);
 }
 
-function downloadURI(uri, name) {
+function downloadURI(uri) {
   let link = document.createElement("a");
-  link.download = name;
+  link.target = "_blank";
   link.href = uri;
   link.hidden = true;
   document.body.appendChild(link);
-
   link.click();
-
   document.body.removeChild(link);
-
   delete link;
 }
 
@@ -205,13 +201,4 @@ function enter(item) {
 
     print("> " + payload);
     ws.send(payload);
-}
-
-function closeConnection() {
-    if (!ws) {
-        return;
-    }
-
-    ws.send("disconnect");
-    ws.close();
 }
