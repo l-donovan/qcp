@@ -1,13 +1,5 @@
-let output = document.getElementById("output");
 let files = document.getElementById("files");
 let ws;
-
-function print(message) {
-    let d = document.createElement("div");
-    d.textContent = message;
-    output.appendChild(d);
-    output.scroll(0, output.scrollHeight);
-}
 
 function permBits(bits) {
     let out = "";
@@ -62,7 +54,7 @@ function createEntry(item) {
     entry.setAttribute("directory", isDir ? "true" : "false");
 
     let downloadButton = document.createElement("span");
-    downloadButton.textContent = "⬇";
+    downloadButton.textContent = "○";
     downloadButton.classList.add("download");
     downloadButton.onclick = function() {
         download(item);
@@ -93,25 +85,25 @@ function openConnection() {
     ws = new WebSocket(endpoint);
 
     ws.onopen = function(evt) {
-        print("OPEN");
+        console.log("OPEN");
     }
 
     ws.onclose = function(evt) {
-        print("CLOSE");
+        console.log("CLOSE");
         ws = null;
     }
 
     ws.onmessage = function(evt) {
-        // print("< " + evt.data);
+        // console.log("< " + evt.data);
 
         if (evt.data === "connected") {
-            document.getElementById("connect").disabled = true;
-            document.getElementById("disconnect").disabled = false;
+            document.getElementById("connect").setAttribute("disabled", "true");
+            document.getElementById("disconnect").setAttribute("disabled", "false");
 
             listFiles();
         } else if (evt.data === "disconnected") {
-            document.getElementById("connect").disabled = false;
-            document.getElementById("disconnect").disabled = true;
+            document.getElementById("connect").setAttribute("disabled", "false");
+            document.getElementById("disconnect").setAttribute("disabled", "true");
         } else if (evt.data.startsWith("list ")) {
             const payload = JSON.parse(evt.data.slice(evt.data.indexOf(" ") + 1))
             files.replaceChildren();
@@ -131,7 +123,7 @@ function openConnection() {
 
     ws.onerror = function(evt) {
         console.log(evt);
-        print("! " + evt.data);
+        console.log("! " + evt.data);
     }
 
     return false;
@@ -146,7 +138,7 @@ function connect() {
         "location": location,
     });
 
-    print("> " + payload);
+    console.log("> " + payload);
     ws.send(payload);
 }
 
@@ -173,7 +165,7 @@ function download(item) {
 
     const payload = "download " + JSON.stringify(item);
 
-    print("> " + payload);
+    console.log("> " + payload);
     ws.send(payload);
 }
 
@@ -199,6 +191,6 @@ function enter(item) {
 
     const payload = "enter " + JSON.stringify(item);
 
-    print("> " + payload);
+    console.log("> " + payload);
     ws.send(payload);
 }

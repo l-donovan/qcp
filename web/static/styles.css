@@ -1,10 +1,49 @@
 body {
+    margin: 0;
     font-family: sans-serif;
     color: white;
     background: black;
 }
 
-.entry span {
+.input-bar {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: rgb(from limegreen r g b / 0.2);
+    backdrop-filter: blur(10px);
+}
+
+.input-bar .repo {
+    font-family: "Inter";
+    font-weight: 600;
+    font-size: 1.75rem;
+    margin: 0 1rem;
+    color: white;
+    font-style: italic;
+    text-decoration: none;
+    transition: color 0.15s ease-in-out;
+
+    /* Just bumping the baseline up a bit */
+    padding-bottom: 2px;
+}
+
+
+.input-bar .repo:visited {
+    color: inherit;
+}
+
+.input-bar .repo:hover {
+    color: deepskyblue;
+}
+
+input {
+    padding: 0.5rem;
     font-family: monospace;
 }
 
@@ -32,22 +71,81 @@ body {
     margin-right: 1ch;
 }
 
+.perm {
+    cursor: default;
+}
+
+.entry .download:hover, .entry .name:hover {
+    filter: hue-rotate(40deg);
+}
+
 #files {
     background: black;
     color: white;
-    height: 50vh;
     overflow-y: auto;
-    padding: 0.5rem;
+    padding: 0 0.5rem 0.5rem 0.5rem;
     border: 1px dashed black;
+    font-family: monospace;
 }
 
-#output {
-    background: black;
-    color: limegreen;
-    font-family: monospace;
-    height: 20vh;
-    overflow-y: auto;
-    padding: 0.5rem;
-    border: 1px dashed limegreen;
-    width: calc(100% - 1rem - 2px);
+#files div {
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+
+}
+
+#files div:nth-child(1) {
+    margin-top: calc(3rem + 2px);
+}
+
+.button {
+    --button-bg: white;
+    --button-bg-hover: lightgray;
+    --button-bg-active: darkgray;
+    --button-border-color: white;
+    --button-focus-effect: ease-in-out;
+    --button-height: 2rem;
+    --button-color: black;
+    --button-radius: 0.25rem;
+    --button-padding: 1rem;
+
+    border-radius: 0.25rem;
+    cursor: pointer;
+    display: inline-block;
+    padding: 0;
+    text-decoration: none;
+}
+
+.button[disabled="true"] {
+    pointer-events: none;;
+    opacity: 0.5;
+}
+
+.button:hover {
+    --button-border-color: var(--button-bg);
+}
+
+.button-wrap {
+    font-family: "Inter";
+    font-size: 0.75rem;
+    font-weight: 600;
+    align-items: center;
+    background-color: var(--button-bg);
+    border: 1px solid var(--button-border-color);
+    border-radius: var(--button-radius);
+    color: var(--button-color);
+    display: flex;
+    gap: 0.25rem;
+    height: var(--button-height);
+    justify-content: center;
+    padding-left: var(--button-padding);
+    padding-right: var(--button-padding);
+}
+
+.button:hover .button-wrap {
+    background-color: var(--button-bg-hover);
+}
+
+.button:active .button-wrap {
+    background-color: var(--button-bg-active);
 }

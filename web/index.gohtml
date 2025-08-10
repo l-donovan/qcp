@@ -2,18 +2,23 @@
 <html lang="en">
 <head>
     <title>qcp</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
 <div>
-    <div>
-        <label for="hostname">Hostname</label><input id="hostname" type="text" placeholder="hostname">
-        <label for="location">Location</label><input id="location" type="text" placeholder="/your/path/here">
-        <button id="connect" onclick="connect()">Connect</button>
-        <button id="disconnect" onclick="disconnect()" disabled>Disconnect</button>
+    <div class="input-bar">
+        <a class="repo" href="//github.com/l-donovan/qcp" target="_blank">qcp</a>
+        <label for="hostname" hidden>Hostname</label>
+        <input id="hostname" type="text" placeholder="hostname">
+        <label for="location" hidden>Location</label>
+        <input id="location" type="text" placeholder="/your/path/here">
+        <a id="connect" class="button" onclick="connect()"><span class="button-wrap">Connect</span></a>
+        <a id="disconnect" class="button" onclick="disconnect()" disabled="true"><span class="button-wrap">Disconnect</span></a>
     </div>
     <div id="files"></div>
-    <div id="output"></div>
 </div>
 <script src="static/qcp.js"></script>
 <script>
