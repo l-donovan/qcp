@@ -321,7 +321,8 @@ func (m *model) SelectFile(entry common.ThinDirEntry) error {
 
 		return err
 	} else {
-		err := Receive(entry.Name, m.stdout)
+		// TODO: Parameterize the compression flag here.
+		err := ReceiveFile(entry.Name, m.stdout, true)
 		return err
 	}
 }

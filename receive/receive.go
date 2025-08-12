@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -56,7 +57,45 @@ func ReceiveDirectory(dstDirectory string, src io.Reader, log LogFunc) error {
 	return nil
 }
 
-func Receive(dstFilePath string, src io.Reader) error {
+func receiveFileCompressed(dstFilePath string, src io.Reader) error {
+	srcReader := bufio.NewReader(src)
+
+	fileModeStr, err := srcReader.ReadString('\n')
+
+	if err != nil {
+		return err
+	}
+
+	fileMode, err := strconv.Atoi(strings.TrimSpace(fileModeStr))
+
+	if err != nil {
+		return err
+	}
+
+	gzipReader, err := gzip.NewReader(src)
+
+	if err != nil {
+		return err
+	}
+
+	fp, err := os.Create(dstFilePath)
+
+	if err != nil {
+		return fmt.Errorf("create file: %v", err)
+	}
+
+	if _, err := io.Copy(fp, gzipReader); err != nil {
+		return fmt.Errorf("copy to destination file: %v", err)
+	}
+
+	if err := fp.Chmod(os.FileMode(fileMode)); err != nil {
+		return fmt.Errorf("set destination file permissions: %v", err)
+	}
+
+	return nil
+}
+
+func receiveFileUncompressed(dstFilePath string, src io.Reader) error {
 	srcReader := bufio.NewReader(src)
 
 	fileSizeStr, err := srcReader.ReadString('\n')
@@ -94,4 +133,12 @@ func Receive(dstFilePath string, src io.Reader) error {
 	}
 
 	return nil
+}
+
+func ReceiveFile(dstFilePath string, src io.Reader, compressed bool) error {
+	if compressed {
+		return receiveFileCompressed(dstFilePath, src)
+	} else {
+		return receiveFileUncompressed(dstFilePath, src)
+	}
 }

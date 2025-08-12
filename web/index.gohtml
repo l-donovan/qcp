@@ -10,13 +10,13 @@
 <body>
 <div>
     <div class="input-bar">
-        <a class="repo" href="//github.com/l-donovan/qcp" target="_blank">qcp</a>
+        <a class="repo" href="//github.com/l-donovan/qcp" target="_blank" tabindex="0">qcp</a>
         <label for="hostname" hidden>Hostname</label>
-        <input id="hostname" type="text" placeholder="hostname">
+        <input id="hostname" type="text" placeholder="hostname" tabindex="1">
         <label for="location" hidden>Location</label>
-        <input id="location" type="text" placeholder="/your/path/here">
-        <a id="connect" class="button" onclick="connect()"><span class="button-wrap">Connect</span></a>
-        <a id="disconnect" class="button" onclick="disconnect()" disabled="true"><span class="button-wrap">Disconnect</span></a>
+        <input id="location" type="text" placeholder="/your/path/here" tabindex="2">
+        <a id="connect" class="button" onclick="connect()" tabindex="3"><span class="button-wrap">Connect</span></a>
+        <a id="disconnect" class="button" onclick="disconnect()" tabindex="4" disabled="true"><span class="button-wrap">Disconnect</span></a>
     </div>
     <div id="files"></div>
 </div>

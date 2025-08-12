@@ -26,7 +26,7 @@ func DownloadDirectory(client *ssh.Client, srcDirectory, dstDirectory string, ex
 	})
 }
 
-func Download(client *ssh.Client, srcFilePath, dstFilePath string, executable string) error {
+func DownloadFile(client *ssh.Client, srcFilePath, dstFilePath string, executable string, compress bool) error {
 	if executable == "" {
 		foundExecutable, err := common.FindExecutable(client, "qcp")
 
@@ -39,7 +39,11 @@ func Download(client *ssh.Client, srcFilePath, dstFilePath string, executable st
 
 	serveCmd := fmt.Sprintf("%s serve %s", executable, srcFilePath)
 
+	if !compress {
+		serveCmd += " -u"
+	}
+
 	return common.RunWithPipes(client, serveCmd, func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
-		return Receive(dstFilePath, stdout)
+		return ReceiveFile(dstFilePath, stdout, compress)
 	})
 }

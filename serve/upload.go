@@ -26,7 +26,7 @@ func UploadDirectory(client *ssh.Client, srcDirectory, dstDirectory string, exec
 	})
 }
 
-func Upload(client *ssh.Client, srcFilePath, dstFilePath string, executable string) error {
+func UploadFile(client *ssh.Client, srcFilePath, dstFilePath string, executable string, compress bool) error {
 	if executable == "" {
 		foundExecutable, err := common.FindExecutable(client, "qcp")
 
@@ -39,7 +39,11 @@ func Upload(client *ssh.Client, srcFilePath, dstFilePath string, executable stri
 
 	serveCmd := fmt.Sprintf("%s receive %s", executable, dstFilePath)
 
+	if !compress {
+		serveCmd += " -u"
+	}
+
 	return common.RunWithPipes(client, serveCmd, func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
-		return Serve(srcFilePath, stdin)
+		return ServeFile(srcFilePath, stdin, compress)
 	})
 }

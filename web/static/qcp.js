@@ -31,7 +31,7 @@ function modeString(bits) {
     if (isDirectory(bits)) {
         out += '<span class="blue">d</span>';
     } else {
-        out += "&nbsp;";
+        out += "-";
     }
 
     let userBits = (bits >> 6) & 0b111;
@@ -56,9 +56,8 @@ function createEntry(item) {
     let downloadButton = document.createElement("span");
     downloadButton.textContent = "○";
     downloadButton.classList.add("download");
-    downloadButton.onclick = function() {
-        download(item);
-    };
+    downloadButton.title = `Download ${item.name}`;
+    downloadButton.onclick = () => download(item);
     entry.appendChild(downloadButton);
 
     let perms = document.createElement("span");
@@ -69,9 +68,11 @@ function createEntry(item) {
     let name = document.createElement("span");
     name.classList.add("name");
     name.innerHTML = item.name;
-    name.onclick = function() {
-        enter(item);
+
+    if (isDir) {
+        name.onclick = () => enter(item);
     }
+
     entry.appendChild(name);
 
     return entry;
@@ -117,7 +118,7 @@ function openConnection() {
         } else if (evt.data.startsWith("download ")) {
             let components = evt.data.split(" ");
             let link = components[1];
-            downloadURI(link);
+            window.open(link);
         }
     }
 
@@ -167,17 +168,6 @@ function download(item) {
 
     console.log("> " + payload);
     ws.send(payload);
-}
-
-function downloadURI(uri) {
-  let link = document.createElement("a");
-  link.target = "_blank";
-  link.href = uri;
-  link.hidden = true;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  delete link;
 }
 
 function enter(item) {

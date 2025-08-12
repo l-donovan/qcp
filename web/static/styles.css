@@ -15,8 +15,8 @@ body {
     top: 0;
     left: 0;
     width: 100%;
-    background: rgb(from limegreen r g b / 0.2);
-    backdrop-filter: blur(10px);
+    background: rgb(from limegreen r g b / 0.1);
+    backdrop-filter: blur(3px);
 }
 
 .input-bar .repo {
@@ -55,8 +55,20 @@ input {
     color: yellow;
 }
 
-.entry .name, .entry .download {
+.entry {
+    cursor: default;
+}
+
+.entry .download {
     cursor: pointer;
+}
+
+.entry[directory="true"] .name {
+    cursor: pointer;
+}
+
+.entry[directory="true"] .name:hover {
+    filter: hue-rotate(40deg);
 }
 
 .blue, .entry[directory="true"] .name {
@@ -69,14 +81,6 @@ input {
 
 .entry .download, .entry .perm {
     margin-right: 1ch;
-}
-
-.perm {
-    cursor: default;
-}
-
-.entry .download:hover, .entry .name:hover {
-    filter: hue-rotate(40deg);
 }
 
 #files {
@@ -128,7 +132,7 @@ input {
 .button-wrap {
     font-family: "Inter";
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 500;
     align-items: center;
     background-color: var(--button-bg);
     border: 1px solid var(--button-border-color);

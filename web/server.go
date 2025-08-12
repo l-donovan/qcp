@@ -190,7 +190,8 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 					return []byte(err.Error())
 				}
 
-				downloadInfo, err := download(downloadSession, request)
+				// TODO: We want compression parameterized.
+				downloadInfo, err := download(downloadSession, request, true)
 
 				if err != nil {
 					return []byte(err.Error())
@@ -328,12 +329,30 @@ func enter(session common.Session, request common.ThinDirEntry) error {
 	return nil
 }
 
-func download(session common.Session, request common.ThinDirEntry) (DownloadInfo, error) {
+func download(session common.Session, request common.ThinDirEntry, compressed bool) (DownloadInfo, error) {
 	if request.Mode.IsDir() {
-		return DownloadInfo{request.Name + ".tar.gz", session.Stdout}, nil
+		return DownloadInfo{Filename: request.Name + ".tar.gz", Contents: session.Stdout, Compressed: true}, nil
+	} else if compressed {
+		srcReader := bufio.NewReader(session.Stdout)
+		downloadInfo := DownloadInfo{Filename: request.Name, Contents: srcReader, Compressed: true}
+
+		fileModeStr, err := srcReader.ReadString('\n')
+
+		if err != nil {
+			return downloadInfo, err
+		}
+
+		// I don't think we can actually do anything meaningful with the file mode here.
+		_, err = strconv.Atoi(strings.TrimSpace(fileModeStr))
+
+		if err != nil {
+			return downloadInfo, err
+		}
+
+		return downloadInfo, nil
 	} else {
 		srcReader := bufio.NewReader(session.Stdout)
-		downloadInfo := DownloadInfo{Filename: request.Name, Contents: srcReader}
+		downloadInfo := DownloadInfo{Filename: request.Name, Contents: srcReader, Compressed: false}
 
 		fileSizeStr, err := srcReader.ReadString('\n')
 
@@ -393,6 +412,10 @@ func (h Handler) ServeFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", "attachment;filename="+downloadInfo.Filename)
+
+	if downloadInfo.Compressed {
+		w.Header().Set("Content-Encoding", "gzip")
+	}
 
 	for {
 		if _, err := io.CopyN(w, downloadInfo.Contents, 1024); err != nil {

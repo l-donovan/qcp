@@ -103,8 +103,44 @@ func ServeDirectory(srcDirectory string, dst io.WriteCloser) error {
 	return nil
 }
 
-// Serve sends a file via stdout and a simple wire protocol.
-func Serve(srcFilePath string, dst io.WriteCloser) error {
+func serveFileCompressed(srcFilePath string, dst io.WriteCloser) error {
+	fileInfo, err := os.Stat(srcFilePath)
+
+	if err != nil {
+		return err
+	}
+
+	// One line containing the file mode
+	// Normally this is represented in octal, but we're sending it over the wire in base-10 for
+	// more straightforward [un]marshalling.
+	fileMode := uint32(fileInfo.Mode())
+
+	if _, err := fmt.Fprintf(dst, "%d\n", fileMode); err != nil {
+		return err
+	}
+
+	gzipWriter := gzip.NewWriter(dst)
+
+	defer func() {
+		if err := gzipWriter.Close(); err != nil {
+			fmt.Printf("Error closing gzip writer: %v\n", err)
+		}
+	}()
+
+	fp, err := os.Open(srcFilePath)
+
+	if err != nil {
+		return fmt.Errorf("open source file: %v", err)
+	}
+
+	if _, err := io.Copy(gzipWriter, fp); err != nil {
+		return fmt.Errorf("copy source file: %v", err)
+	}
+
+	return nil
+}
+
+func serveFileUncompressed(srcFilePath string, dst io.WriteCloser) error {
 	fileBytes, err := os.ReadFile(srcFilePath)
 
 	if err != nil {
@@ -139,4 +175,13 @@ func Serve(srcFilePath string, dst io.WriteCloser) error {
 	}
 
 	return nil
+}
+
+// Serve sends a file via stdout and a simple wire protocol.
+func ServeFile(srcFilePath string, dst io.WriteCloser, compress bool) error {
+	if compress {
+		return serveFileCompressed(srcFilePath, dst)
+	} else {
+		return serveFileUncompressed(srcFilePath, dst)
+	}
 }

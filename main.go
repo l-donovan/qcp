@@ -32,12 +32,14 @@ func main() {
 			s.AddParameter("source", "file to download")
 			s.AddParameter("destination", "location of downloaded file")
 			s.AddFlag("directory", 'd', "source should be treated as a directory", false)
+			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
 			s.AddValueFlag("executable", 'e', "description", "path", "")
 		},
 		"_serve": func(s *goparse.Parser) {
 			// Server mode (hidden)
 			s.AddParameter("source", "file to serve")
 			s.AddFlag("directory", 'd', "source should be treated as a directory", false)
+			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
 		},
 		"upload": func(s *goparse.Parser) {
 			// Client mode
@@ -45,12 +47,14 @@ func main() {
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.AddParameter("destination", "location of uploaded file")
 			s.AddFlag("directory", 'd', "source should be treated as a directory", false)
+			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
 			s.AddValueFlag("executable", 'e', "description", "path", "")
 		},
 		"_receive": func(s *goparse.Parser) {
 			// Server mode (hidden)
 			s.AddParameter("destination", "file to receive")
 			s.AddFlag("directory", 'd', "source should be treated as a directory", false)
+			s.AddFlag("uncompressed", 'u', "source should be treated as uncompressed (parameter has no effect for directory sources)", false)
 		},
 		"pick": func(s *goparse.Parser) {
 			// Client mode
@@ -83,6 +87,7 @@ func main() {
 		dstFilePath := args["destination"].(string)
 		isDirectory := args["directory"].(bool)
 		executable := args["executable"].(string)
+		uncompressed := args["uncompressed"].(bool)
 
 		info, err := common.ParseConnectionString(connectionString)
 
@@ -109,7 +114,7 @@ func main() {
 				exitWithError(err)
 			}
 		} else {
-			err = receive.Download(remoteClient, srcFilePath, dstFilePath, executable)
+			err = receive.DownloadFile(remoteClient, srcFilePath, dstFilePath, executable, !uncompressed)
 
 			if err != nil {
 				exitWithError(err)
@@ -118,6 +123,7 @@ func main() {
 	case "serve":
 		srcFilePath := args["source"].(string)
 		isDirectory := args["directory"].(bool)
+		uncompressed := args["uncompressed"].(bool)
 
 		if isDirectory {
 			err := serve.ServeDirectory(srcFilePath, os.Stdout)
@@ -126,7 +132,7 @@ func main() {
 				exitWithError(err)
 			}
 		} else {
-			err := serve.Serve(srcFilePath, os.Stdout)
+			err := serve.ServeFile(srcFilePath, os.Stdout, !uncompressed)
 
 			if err != nil {
 				exitWithError(err)
@@ -138,6 +144,7 @@ func main() {
 		dstFilePath := args["destination"].(string)
 		isDirectory := args["directory"].(bool)
 		executable := args["executable"].(string)
+		uncompressed := args["uncompressed"].(bool)
 
 		info, err := common.ParseConnectionString(connectionString)
 
@@ -162,20 +169,21 @@ func main() {
 				exitWithError(err)
 			}
 		} else {
-			if err := serve.Upload(remoteClient, srcFilePath, dstFilePath, executable); err != nil {
+			if err := serve.UploadFile(remoteClient, srcFilePath, dstFilePath, executable, !uncompressed); err != nil {
 				exitWithError(err)
 			}
 		}
 	case "receive":
 		dstFilePath := args["destination"].(string)
 		isDirectory := args["directory"].(bool)
+		uncompressed := args["uncompressed"].(bool)
 
 		if isDirectory {
 			if err := receive.ReceiveDirectory(dstFilePath, os.Stdin, fmt.Printf); err != nil {
 				exitWithError(err)
 			}
 		} else {
-			if err := receive.Receive(dstFilePath, os.Stdin); err != nil {
+			if err := receive.ReceiveFile(dstFilePath, os.Stdin, !uncompressed); err != nil {
 				exitWithError(err)
 			}
 		}

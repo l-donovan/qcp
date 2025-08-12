@@ -90,7 +90,8 @@ func Present(location string, src io.Reader, dst io.WriteCloser) error {
 			if info.IsDir() {
 				return ServeDirectory(filepath, dst)
 			} else {
-				return Serve(filepath, dst)
+				// TODO: Parameterize compression here. Or address the preceding TODO and disregard.
+				return ServeFile(filepath, dst, true)
 			}
 		case protocol.Enter:
 			result, err := srcReader.ReadString(protocol.EndTransmission)

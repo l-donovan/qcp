@@ -9,8 +9,9 @@ type RequestConnection struct {
 }
 
 type DownloadInfo struct {
-	Filename string
-	Contents io.Reader
+	Filename   string
+	Contents   io.Reader
+	Compressed bool
 }
 
 type HomeInput struct {
