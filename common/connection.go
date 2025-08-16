@@ -148,7 +148,7 @@ func FindExecutable(client *ssh.Client, name string) (string, error) {
 		return "", fmt.Errorf("create session: %v", err)
 	}
 
-	out, err := session.Output(fmt.Sprintf("which %s", name))
+	out, err := session.Output(fmt.Sprintf("$SHELL -l -c 'which %s'", name))
 
 	if err != nil {
 		return "", fmt.Errorf("which %s: %v", name, err)
