@@ -8,18 +8,22 @@
     <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
-<div>
     <div class="input-bar">
         <a class="repo" href="//github.com/l-donovan/qcp" target="_blank" tabindex="0">qcp</a>
         <label for="hostname" hidden>Hostname</label>
-        <input id="hostname" type="text" placeholder="hostname" tabindex="1">
+        <input id="hostname" type="text" placeholder="hostname" tabindex="0">
         <label for="location" hidden>Location</label>
-        <input id="location" type="text" placeholder="/your/path/here" tabindex="2">
-        <a id="connect" class="button" onclick="connect()" tabindex="3"><span class="button-wrap">Connect</span></a>
-        <a id="disconnect" class="button" onclick="disconnect()" tabindex="4" disabled="true"><span class="button-wrap">Disconnect</span></a>
+        <input id="location" type="text" placeholder="/your/path/here" tabindex="0">
+        <a id="connect" class="button" onclick="connect()" tabindex="0"><span class="button-wrap">Connect</span></a>
+        <a id="disconnect" class="button" onclick="disconnect()" tabindex="0" disabled="true"><span class="button-wrap">Disconnect</span></a>
     </div>
     <div id="files"></div>
-</div>
+    <div class="bottom-bar">
+        <div class="rounded-container">
+            <a id="upload" class="button" onclick="upload()" tabindex="0"><span class="button-wrap">↑&nbsp;Upload</span></a>
+            <a id="download" class="button" onclick="downloadBulk()" tabindex="0" disabled="true"><span class="button-wrap">↓&nbsp;Download</span></a>
+        </div>
+    </div>
 <script src="static/qcp.js"></script>
 <script>
     const endpoint = "{{.WebsocketEndpoint}}";

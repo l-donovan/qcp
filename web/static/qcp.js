@@ -1,6 +1,19 @@
 let files = document.getElementById("files");
 let ws;
 
+const pickerOpts = {
+    types: [
+        {
+            description: "Uploads",
+            accept: {
+                "image/*": [".png", ".gif", ".jpeg", ".jpg"],
+            },
+        },
+    ],
+    excludeAcceptAllOption: true,
+    multiple: false,
+};
+
 function permBits(bits) {
     let out = "";
 
@@ -53,6 +66,12 @@ function createEntry(item) {
     entry.classList.add("entry");
     entry.setAttribute("directory", isDir ? "true" : "false");
 
+    let selectCheckbox = document.createElement("input");
+    selectCheckbox.type = "checkbox";
+    selectCheckbox.name = `select-${item.name}`;
+    selectCheckbox.classList.add("download-selector");
+    entry.appendChild(selectCheckbox);
+
     let downloadButton = document.createElement("span");
     downloadButton.textContent = "○";
     downloadButton.classList.add("download");
@@ -95,8 +114,6 @@ function openConnection() {
     }
 
     ws.onmessage = function(evt) {
-        // console.log("< " + evt.data);
-
         if (evt.data === "connected") {
             document.getElementById("connect").setAttribute("disabled", "true");
             document.getElementById("disconnect").setAttribute("disabled", "false");
@@ -170,6 +187,10 @@ function download(item) {
     ws.send(payload);
 }
 
+function downloadBulk() {
+    let selectors = document.querySelectorAll("input.download-selector:checked");
+}
+
 function enter(item) {
     if (!ws) {
         return;
@@ -183,4 +204,12 @@ function enter(item) {
 
     console.log("> " + payload);
     ws.send(payload);
+}
+
+async function upload() {
+    // open file picker, destructure the one element returned array
+    [fileHandle] = await window.showOpenFilePicker(pickerOpts);
+
+
+    // run code with our fileHandle
 }
