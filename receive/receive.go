@@ -2,21 +2,19 @@ package receive
 
 import (
 	"archive/tar"
-	"bufio"
 	"bytes"
 	"compress/gzip"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
-	"strings"
+
+	"github.com/l-donovan/qcp/protocol"
 )
 
-type LogFunc func(fmt string, a ...any) (n int, err error)
-
-func ReceiveDirectory(dstDirectory string, src io.Reader, log LogFunc) error {
+func receiveDirectory(dstDirectory string, src io.Reader) error {
 	gzipReader, err := gzip.NewReader(src)
 
 	if err != nil {
@@ -29,7 +27,7 @@ func ReceiveDirectory(dstDirectory string, src io.Reader, log LogFunc) error {
 		header, err := tarReader.Next()
 
 		if err == io.EOF {
-			log("All files received")
+			fmt.Printf("All files received")
 			break
 		}
 
@@ -39,7 +37,7 @@ func ReceiveDirectory(dstDirectory string, src io.Reader, log LogFunc) error {
 
 		var fileBuf bytes.Buffer
 		filePath := path.Join(dstDirectory, header.Name)
-		log("Receiving %s\n", header.Name)
+		fmt.Printf("Receiving %s\n", header.Name)
 
 		if _, err := io.Copy(&fileBuf, tarReader); err != nil {
 			return err
@@ -58,24 +56,18 @@ func ReceiveDirectory(dstDirectory string, src io.Reader, log LogFunc) error {
 }
 
 func receiveFileCompressed(dstFilePath string, src io.Reader) error {
-	srcReader := bufio.NewReader(src)
+	fileModeBytes := make([]byte, 4)
 
-	fileModeStr, err := srcReader.ReadString('\n')
-
-	if err != nil {
-		return err
+	if _, err := src.Read(fileModeBytes); err != nil {
+		return fmt.Errorf("read file mode: %v", err)
 	}
 
-	fileMode, err := strconv.Atoi(strings.TrimSpace(fileModeStr))
-
-	if err != nil {
-		return err
-	}
+	fileMode := binary.LittleEndian.Uint32(fileModeBytes)
 
 	gzipReader, err := gzip.NewReader(src)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("create gzip reader: %v", err)
 	}
 
 	fp, err := os.Create(dstFilePath)
@@ -83,6 +75,12 @@ func receiveFileCompressed(dstFilePath string, src io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("create file: %v", err)
 	}
+
+	defer func() {
+		if err := fp.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error closing file: %v\n", err)
+		}
+	}()
 
 	if _, err := io.Copy(fp, gzipReader); err != nil {
 		return fmt.Errorf("copy to destination file: %v", err)
@@ -96,47 +94,60 @@ func receiveFileCompressed(dstFilePath string, src io.Reader) error {
 }
 
 func receiveFileUncompressed(dstFilePath string, src io.Reader) error {
-	srcReader := bufio.NewReader(src)
+	fileSizeBytes := make([]byte, 4)
+	fileModeBytes := make([]byte, 4)
 
-	fileSizeStr, err := srcReader.ReadString('\n')
+	if _, err := src.Read(fileSizeBytes); err != nil {
+		return fmt.Errorf("read file size: %v", err)
+	}
+
+	if _, err := src.Read(fileModeBytes); err != nil {
+		return fmt.Errorf("read file mode: %v", err)
+	}
+
+	fileSize := binary.LittleEndian.Uint32(fileSizeBytes)
+	fileMode := binary.LittleEndian.Uint32(fileModeBytes)
+
+	fp, err := os.Create(dstFilePath)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("create file: %v", err)
 	}
 
-	fileSize, err := strconv.Atoi(strings.TrimSpace(fileSizeStr))
+	defer func() {
+		if err := fp.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error closing file: %v\n", err)
+		}
+	}()
 
-	if err != nil {
-		return err
+	if err := fp.Truncate(int64(fileSize)); err != nil {
+		return fmt.Errorf("set file size: %v", err)
 	}
 
-	fileModeStr, err := srcReader.ReadString('\n')
-
-	if err != nil {
-		return err
+	if _, err := io.Copy(fp, src); err != nil {
+		return fmt.Errorf("copy to destination file: %v", err)
 	}
 
-	fileMode, err := strconv.Atoi(strings.TrimSpace(fileModeStr))
-
-	if err != nil {
-		return err
-	}
-
-	fileContents := make([]byte, fileSize)
-
-	if _, err := io.ReadFull(srcReader, fileContents); err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(dstFilePath, fileContents, os.FileMode(fileMode)); err != nil {
-		return err
+	if err := fp.Chmod(os.FileMode(fileMode)); err != nil {
+		return fmt.Errorf("set destination file permissions: %v", err)
 	}
 
 	return nil
 }
 
-func ReceiveFile(dstFilePath string, src io.Reader, compressed bool) error {
-	if compressed {
+func Receive(dstFilePath string, src io.Reader) error {
+	f := make([]byte, 1)
+
+	if _, err := src.Read(f); err != nil {
+		return fmt.Errorf("read flags: %v", err)
+	}
+
+	isDir := f[0]&protocol.IsDirectory > 0
+	isCompressed := f[0]&protocol.IsCompressed > 0
+
+	if isDir {
+		return receiveDirectory(dstFilePath, src)
+	} else if isCompressed {
 		return receiveFileCompressed(dstFilePath, src)
 	} else {
 		return receiveFileUncompressed(dstFilePath, src)

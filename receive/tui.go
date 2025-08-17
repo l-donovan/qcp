@@ -313,18 +313,7 @@ func (m *model) SelectFile(entry common.ThinDirEntry) error {
 		return err
 	}
 
-	if entry.Mode.IsDir() {
-		err := ReceiveDirectory(entry.Name, m.stdout, func(format string, a ...any) (n int, err error) {
-			// TODO: we want to log the output somewhere, maybe in a modal?
-			return 0, nil
-		})
-
-		return err
-	} else {
-		// TODO: Parameterize the compression flag here.
-		err := ReceiveFile(entry.Name, m.stdout, true)
-		return err
-	}
+	return Receive(entry.Name, m.stdout)
 }
 
 func (m *model) EnterDirectory(location string) error {

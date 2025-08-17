@@ -3,6 +3,7 @@ package serve
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"io/fs"
@@ -10,6 +11,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/l-donovan/qcp/protocol"
 )
 
 func addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory string) error {
@@ -18,26 +21,26 @@ func addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 	archivePath = filepath.ToSlash(archivePath)
 
 	// Open the path to read from.
-	f, err := os.Open(filePath)
+	fp, err := os.Open(filePath)
 
 	if err != nil {
 		return fmt.Errorf("open file: %v", err)
 	}
 
 	defer func() {
-		if err := f.Close(); err != nil {
-			fmt.Printf("Error closing file: %v\n", err)
+		if err := fp.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error closing file: %v\n", err)
 		}
 	}()
 
-	info, err := f.Stat()
+	fileInfo, err := fp.Stat()
 
 	if err != nil {
 		return err
 	}
 
 	// Create the path in the tarball.
-	header, err := tar.FileInfoHeader(info, archivePath)
+	header, err := tar.FileInfoHeader(fileInfo, archivePath)
 
 	if err != nil {
 		return err
@@ -50,12 +53,12 @@ func addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 	}
 
 	// There isn't anything to copy for directories.
-	if info.IsDir() {
+	if fileInfo.IsDir() {
 		return nil
 	}
 
 	// Write the source file into the tarball at path from Create().
-	if _, err = io.Copy(tarWriter, f); err != nil {
+	if _, err = io.Copy(tarWriter, fp); err != nil {
 		return err
 	}
 
@@ -65,11 +68,15 @@ func addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 // ServeDirectory sends a directory via stdout and a simple wire protocol.
 // The directory is added to a tar archive and compressed with gzip.
 func ServeDirectory(srcDirectory string, dst io.WriteCloser) error {
+	if _, err := dst.Write([]byte{protocol.IsDirectory}); err != nil {
+		return fmt.Errorf("write flags: %v", err)
+	}
+
 	gzipWriter := gzip.NewWriter(dst)
 
 	defer func() {
 		if err := gzipWriter.Close(); err != nil {
-			fmt.Printf("Error closing gzip writer: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error closing gzip writer: %v\n", err)
 		}
 	}()
 
@@ -77,11 +84,9 @@ func ServeDirectory(srcDirectory string, dst io.WriteCloser) error {
 
 	defer func() {
 		if err := tarWriter.Close(); err != nil {
-			fmt.Printf("Error closing tar writer: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error closing tar writer: %v\n", err)
 		}
 	}()
-
-	// TODO: Might be nice to stick file count or archive size at the top of our stream for determining progress.
 
 	if err := filepath.WalkDir(srcDirectory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -103,11 +108,15 @@ func ServeDirectory(srcDirectory string, dst io.WriteCloser) error {
 }
 
 func ServeMultipleFiles(srcFilePaths []string, dst io.WriteCloser) error {
+	if _, err := dst.Write([]byte{protocol.IsDirectory}); err != nil {
+		return fmt.Errorf("write flags: %v", err)
+	}
+
 	gzipWriter := gzip.NewWriter(dst)
 
 	defer func() {
 		if err := gzipWriter.Close(); err != nil {
-			fmt.Printf("Error closing gzip writer: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error closing gzip writer: %v\n", err)
 		}
 	}()
 
@@ -115,7 +124,7 @@ func ServeMultipleFiles(srcFilePaths []string, dst io.WriteCloser) error {
 
 	defer func() {
 		if err := tarWriter.Close(); err != nil {
-			fmt.Printf("Error closing tar writer: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error closing tar writer: %v\n", err)
 		}
 	}()
 
@@ -153,28 +162,7 @@ func ServeMultipleFiles(srcFilePaths []string, dst io.WriteCloser) error {
 }
 
 func serveFileCompressed(srcFilePath string, dst io.WriteCloser) error {
-	fileInfo, err := os.Stat(srcFilePath)
-
-	if err != nil {
-		return err
-	}
-
-	// One line containing the file mode
-	// Normally this is represented in octal, but we're sending it over the wire in base-10 for
-	// more straightforward [un]marshalling.
-	fileMode := uint32(fileInfo.Mode())
-
-	if _, err := fmt.Fprintf(dst, "%d\n", fileMode); err != nil {
-		return err
-	}
-
-	gzipWriter := gzip.NewWriter(dst)
-
-	defer func() {
-		if err := gzipWriter.Close(); err != nil {
-			fmt.Printf("Error closing gzip writer: %v\n", err)
-		}
-	}()
+	fileModeBytes := make([]byte, 4)
 
 	fp, err := os.Open(srcFilePath)
 
@@ -182,6 +170,40 @@ func serveFileCompressed(srcFilePath string, dst io.WriteCloser) error {
 		return fmt.Errorf("open source file: %v", err)
 	}
 
+	defer func() {
+		if err := fp.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error closing file: %v\n", err)
+		}
+	}()
+
+	fileInfo, err := fp.Stat()
+
+	if err != nil {
+		return fmt.Errorf("stat file: %v", err)
+	}
+
+	// One uint32 containing flags.
+	if _, err := dst.Write([]byte{protocol.IsCompressed}); err != nil {
+		return fmt.Errorf("write flags: %v", err)
+	}
+
+	// One uint32 containing the file mode.
+	fileMode := uint32(fileInfo.Mode())
+	binary.LittleEndian.PutUint32(fileModeBytes, fileMode)
+
+	if _, err := dst.Write(fileModeBytes); err != nil {
+		return fmt.Errorf("write file mode: %v", err)
+	}
+
+	gzipWriter := gzip.NewWriter(dst)
+
+	defer func() {
+		if err := gzipWriter.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error closing gzip writer: %v\n", err)
+		}
+	}()
+
+	// The file contents.
 	if _, err := io.Copy(gzipWriter, fp); err != nil {
 		return fmt.Errorf("copy source file: %v", err)
 	}
@@ -190,36 +212,50 @@ func serveFileCompressed(srcFilePath string, dst io.WriteCloser) error {
 }
 
 func serveFileUncompressed(srcFilePath string, dst io.WriteCloser) error {
-	fileBytes, err := os.ReadFile(srcFilePath)
+	fileSizeBytes := make([]byte, 4)
+	fileModeBytes := make([]byte, 4)
+
+	fp, err := os.Open(srcFilePath)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("open file for reading: %v", err)
 	}
 
-	// One line containing the file size in Bytes
-	fileSize := len(fileBytes)
+	defer func() {
+		if err := fp.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error closing file: %v\n", err)
+		}
+	}()
 
-	if _, err := fmt.Fprintf(dst, "%d\n", fileSize); err != nil {
-		return err
-	}
-
-	fileInfo, err := os.Stat(srcFilePath)
+	fileInfo, err := fp.Stat()
 
 	if err != nil {
-		return err
+		return fmt.Errorf("stat file: %v", err)
 	}
 
-	// One line containing the file mode
-	// Normally this is represented in octal, but we're sending it over the wire in base-10 for
-	// more straightforward [un]marshalling.
+	// One uint32 containing flags.
+	if _, err := dst.Write([]byte{0}); err != nil {
+		return fmt.Errorf("write flags: %v", err)
+	}
+
+	// One uint32 containing the file size.
+	fileSize := uint32(fileInfo.Size())
+	binary.LittleEndian.PutUint32(fileSizeBytes, fileSize)
+
+	if _, err := dst.Write(fileSizeBytes); err != nil {
+		return fmt.Errorf("write file size: %v", err)
+	}
+
+	// One uint32 containing the file mode.
 	fileMode := uint32(fileInfo.Mode())
+	binary.LittleEndian.PutUint32(fileModeBytes, fileMode)
 
-	if _, err := fmt.Fprintf(dst, "%d\n", fileMode); err != nil {
-		return err
+	if _, err := dst.Write(fileModeBytes); err != nil {
+		return fmt.Errorf("write file mode: %v", err)
 	}
 
-	// The file contents
-	if _, err = dst.Write(fileBytes); err != nil {
+	// The file contents.
+	if _, err := io.Copy(dst, fp); err != nil {
 		return err
 	}
 

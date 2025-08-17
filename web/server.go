@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -178,12 +177,9 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 
 				filepath := path.Join(currentDir, request.Name)
 				fmt.Printf("Downloading %s\n", filepath)
-				cmd := fmt.Sprintf("%s serve %s", executable, filepath)
 
-				// TODO: Why can't we determine this via a stat or something?
-				if request.Mode.IsDir() {
-					cmd += " -d"
-				}
+				// TODO: We want compression parameterized.
+				cmd := fmt.Sprintf("%s serve %s", executable, filepath)
 
 				downloadSession, err := startSession(client, cmd)
 
@@ -191,8 +187,7 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 					return []byte(err.Error())
 				}
 
-				// TODO: We want compression parameterized.
-				downloadInfo, err := download(downloadSession, request, true)
+				downloadInfo, err := download(downloadSession, request)
 
 				if err != nil {
 					return []byte(err.Error())
@@ -229,6 +224,12 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 				downloadSession, err := startSession(client, cmd)
 
 				if err != nil {
+					return []byte(err.Error())
+				}
+
+				// Throw away the flag Byte, we already know it'll be 0x01.
+				p := make([]byte, 1)
+				if _, err := downloadSession.Stdout.Read(p); err != nil {
 					return []byte(err.Error())
 				}
 
@@ -387,58 +388,39 @@ func enter(session common.Session, request common.ThinDirEntry) error {
 	return nil
 }
 
-func download(session common.Session, request common.ThinDirEntry, compressed bool) (DownloadInfo, error) {
-	if request.Mode.IsDir() {
+func download(session common.Session, request common.ThinDirEntry) (DownloadInfo, error) {
+	f := make([]byte, 1)
+
+	if _, err := session.Stdout.Read(f); err != nil {
+		return DownloadInfo{}, fmt.Errorf("read flags: %v", err)
+	}
+
+	isDir := f[0]&protocol.IsDirectory > 0
+	isCompressed := f[0]&protocol.IsCompressed > 0
+
+	if isDir {
 		return DownloadInfo{Filename: request.Name + ".tar.gz", Contents: session.Stdout, Compressed: true}, nil
-	} else if compressed {
-		srcReader := bufio.NewReader(session.Stdout)
-		downloadInfo := DownloadInfo{Filename: request.Name, Contents: srcReader, Compressed: true}
+	} else if isCompressed {
+		fileModeBytes := make([]byte, 4)
 
-		fileModeStr, err := srcReader.ReadString('\n')
-
-		if err != nil {
-			return downloadInfo, err
+		if _, err := session.Stdout.Read(fileModeBytes); err != nil {
+			return DownloadInfo{}, fmt.Errorf("read file mode: %v", err)
 		}
 
-		// I don't think we can actually do anything meaningful with the file mode here.
-		_, err = strconv.Atoi(strings.TrimSpace(fileModeStr))
-
-		if err != nil {
-			return downloadInfo, err
-		}
-
-		return downloadInfo, nil
+		return DownloadInfo{Filename: request.Name, Contents: session.Stdout, Compressed: true}, nil
 	} else {
-		srcReader := bufio.NewReader(session.Stdout)
-		downloadInfo := DownloadInfo{Filename: request.Name, Contents: srcReader, Compressed: false}
+		fileSizeBytes := make([]byte, 4)
+		fileModeBytes := make([]byte, 4)
 
-		fileSizeStr, err := srcReader.ReadString('\n')
-
-		if err != nil {
-			return downloadInfo, err
+		if _, err := session.Stdout.Read(fileSizeBytes); err != nil {
+			return DownloadInfo{}, fmt.Errorf("read file size: %v", err)
 		}
 
-		// TODO: Can we report the filesize to get a progress bar?
-		_, err = strconv.Atoi(strings.TrimSpace(fileSizeStr))
-
-		if err != nil {
-			return downloadInfo, err
+		if _, err := session.Stdout.Read(fileModeBytes); err != nil {
+			return DownloadInfo{}, fmt.Errorf("read file mode: %v", err)
 		}
 
-		fileModeStr, err := srcReader.ReadString('\n')
-
-		if err != nil {
-			return downloadInfo, err
-		}
-
-		// I don't think we can actually do anything meaningful with the file mode here.
-		_, err = strconv.Atoi(strings.TrimSpace(fileModeStr))
-
-		if err != nil {
-			return downloadInfo, err
-		}
-
-		return downloadInfo, nil
+		return DownloadInfo{Filename: request.Name, Contents: session.Stdout, Compressed: false}, nil
 	}
 }
 
@@ -510,9 +492,9 @@ func (h Handler) CloseClients() {
 		// This is poorly designed and will probably be a race condition
 
 		if err := client.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to close connection: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to close connection: %v\n", err)
 		} else {
-			fmt.Printf("successfully closed connection to %s\n", client.RemoteAddr())
+			fmt.Printf("Successfully closed connection to %s\n", client.RemoteAddr())
 		}
 	}
 }

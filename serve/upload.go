@@ -19,7 +19,7 @@ func UploadDirectory(client *ssh.Client, srcDirectory, dstDirectory string, exec
 		executable = foundExecutable
 	}
 
-	serveCmd := fmt.Sprintf("%s receive -d %s", executable, dstDirectory)
+	serveCmd := fmt.Sprintf("%s receive %s", executable, dstDirectory)
 
 	return common.RunWithPipes(client, serveCmd, func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
 		return ServeDirectory(srcDirectory, stdin)
@@ -38,10 +38,6 @@ func UploadFile(client *ssh.Client, srcFilePath, dstFilePath string, executable 
 	}
 
 	serveCmd := fmt.Sprintf("%s receive %s", executable, dstFilePath)
-
-	if !compress {
-		serveCmd += " -u"
-	}
 
 	return common.RunWithPipes(client, serveCmd, func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
 		return ServeFile(srcFilePath, stdin, compress)

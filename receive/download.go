@@ -19,10 +19,10 @@ func DownloadDirectory(client *ssh.Client, srcDirectory, dstDirectory string, ex
 		executable = foundExecutable
 	}
 
-	serveCmd := fmt.Sprintf("%s serve -d %s", executable, srcDirectory)
+	serveCmd := fmt.Sprintf("%s serve %s", executable, srcDirectory)
 
 	return common.RunWithPipes(client, serveCmd, func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
-		return ReceiveDirectory(dstDirectory, stdout, fmt.Printf)
+		return Receive(dstDirectory, stdout)
 	})
 }
 
@@ -44,6 +44,6 @@ func DownloadFile(client *ssh.Client, srcFilePath, dstFilePath string, executabl
 	}
 
 	return common.RunWithPipes(client, serveCmd, func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
-		return ReceiveFile(dstFilePath, stdout, compress)
+		return Receive(dstFilePath, stdout)
 	})
 }

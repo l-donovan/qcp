@@ -226,7 +226,7 @@ func RunWithPipes(client *ssh.Client, cmd string, handle RunHandler) error {
 
 	defer func() {
 		if err := session.Close(); err != nil && err != io.EOF {
-			fmt.Printf("error when closing session: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error closing session: %v\n", err)
 		}
 	}()
 
