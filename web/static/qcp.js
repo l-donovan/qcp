@@ -1,4 +1,5 @@
 let files = document.getElementById("files");
+let loc = document.getElementById("location");
 let ws;
 
 const pickerOpts = {
@@ -64,19 +65,25 @@ function createEntry(item) {
     const isDir = isDirectory(item.mode);
     let entry = document.createElement("div");
     entry.classList.add("entry");
-    entry.setAttribute("directory", isDir ? "true" : "false");
+    entry.setAttribute("data-entry-is-directory", isDir ? "true" : "false");
+    entry.setAttribute("data-entry-name", item.name);
+    entry.setAttribute("data-entry-mode", item.mode);
 
     let selectCheckbox = document.createElement("input");
     selectCheckbox.type = "checkbox";
     selectCheckbox.name = `select-${item.name}`;
     selectCheckbox.classList.add("download-selector");
+    selectCheckbox.onchange = () => {
+        const anyChecked = document.querySelectorAll("input.download-selector:checked").length > 0;
+        document.getElementById("download").setAttribute("disabled", anyChecked ? "false" : "true");
+    }
     entry.appendChild(selectCheckbox);
 
     let downloadButton = document.createElement("span");
     downloadButton.textContent = "○";
     downloadButton.classList.add("download");
     downloadButton.title = `Download ${item.name}`;
-    downloadButton.onclick = () => download(item);
+    downloadButton.onclick = download;
     entry.appendChild(downloadButton);
 
     let perms = document.createElement("span");
@@ -89,12 +96,24 @@ function createEntry(item) {
     name.innerHTML = item.name;
 
     if (isDir) {
-        name.onclick = () => enter(item);
+        name.onclick = enter;
     }
 
     entry.appendChild(name);
 
     return entry;
+}
+
+function init() {
+    openConnection();
+
+    document.querySelectorAll(".button").forEach(it => {
+        it.onkeypress = e => {
+            if (e.key === "Enter") {
+                it.click();
+            }
+        };
+    });
 }
 
 function openConnection() {
@@ -117,11 +136,13 @@ function openConnection() {
         if (evt.data === "connected") {
             document.getElementById("connect").setAttribute("disabled", "true");
             document.getElementById("disconnect").setAttribute("disabled", "false");
+            document.getElementById("upload").setAttribute("disabled", "false");
 
             listFiles();
         } else if (evt.data === "disconnected") {
             document.getElementById("connect").setAttribute("disabled", "false");
             document.getElementById("disconnect").setAttribute("disabled", "true");
+            document.getElementById("upload").setAttribute("disabled", "true");
         } else if (evt.data.startsWith("list ")) {
             const payload = JSON.parse(evt.data.slice(evt.data.indexOf(" ") + 1))
             files.replaceChildren();
@@ -130,7 +151,9 @@ function openConnection() {
             payload.forEach(item => {
                 files.appendChild(createEntry(item));
             });
-        } else if (evt.data === "entered") {
+        } else if (evt.data.startsWith("entered ")) {
+            let newLocation = evt.data.slice(evt.data.indexOf(" ") + 1);
+            loc.value = newLocation;
             listFiles();
         } else if (evt.data.startsWith("download ")) {
             let components = evt.data.split(" ");
@@ -161,46 +184,45 @@ function connect() {
 }
 
 function disconnect() {
-    if (!ws) {
-        return;
-    }
-
     ws.send("disconnect");
 }
 
 function listFiles() {
-    if (!ws) {
-        return;
-    }
-
     ws.send("list");
 }
 
-function download(item) {
-    if (!ws) {
-        return;
-    }
+function withWebsocket(fn) {
+    return () => !ws ? () => {} : fn;
+}
 
-    const payload = "download " + JSON.stringify(item);
+function getParentItem(el) {
+    const parent = el.parentElement;
+
+    return {
+        name: parent.getAttribute("data-entry-name"),
+        mode: parseInt(parent.getAttribute("data-entry-mode")),
+    };
+}
+
+function download(evt) {
+    const item = getParentItem(evt.target);
+    const payload = `download ${JSON.stringify(item)}`;
 
     console.log("> " + payload);
     ws.send(payload);
 }
 
 function downloadBulk() {
-    let selectors = document.querySelectorAll("input.download-selector:checked");
+    const items = Array.from(document.querySelectorAll("input.download-selector:checked")).map(getParentItem);
+    const payload = `download-bulk ${JSON.stringify(items)}`;
+
+    console.log("> " + payload)
+    ws.send(payload);
 }
 
-function enter(item) {
-    if (!ws) {
-        return;
-    }
-
-    if (!isDirectory(item.mode)) {
-        return;
-    }
-
-    const payload = "enter " + JSON.stringify(item);
+function enter(evt) {
+    const item = getParentItem(evt.target);
+    const payload = `enter ${JSON.stringify(item)}`;
 
     console.log("> " + payload);
     ws.send(payload);

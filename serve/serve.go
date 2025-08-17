@@ -7,11 +7,12 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
 
-func AddFileToTarArchive(tarWriter *tar.Writer, filePath string, directory string) error {
+func addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory string) error {
 	archivePath := strings.Replace(filePath, directory, "", 1)
 	archivePath = strings.TrimPrefix(archivePath, string(filepath.Separator))
 	archivePath = filepath.ToSlash(archivePath)
@@ -20,7 +21,7 @@ func AddFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 	f, err := os.Open(filePath)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("open file: %v", err)
 	}
 
 	defer func() {
@@ -46,6 +47,11 @@ func AddFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 
 	if err := tarWriter.WriteHeader(header); err != nil {
 		return err
+	}
+
+	// There isn't anything to copy for directories.
+	if info.IsDir() {
+		return nil
 	}
 
 	// Write the source file into the tarball at path from Create().
@@ -88,16 +94,59 @@ func ServeDirectory(srcDirectory string, dst io.WriteCloser) error {
 			return nil
 		}
 
-		// Skip directories. Directories will be created automatically from paths to
-		// each file to tar up.
-		// TODO: This skips empty directories.
-		if d.IsDir() {
-			return nil
-		}
-
-		return AddFileToTarArchive(tarWriter, path, srcDirectory)
+		return addFileToTarArchive(tarWriter, path, srcDirectory)
 	}); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func ServeMultipleFiles(srcFilePaths []string, dst io.WriteCloser) error {
+	gzipWriter := gzip.NewWriter(dst)
+
+	defer func() {
+		if err := gzipWriter.Close(); err != nil {
+			fmt.Printf("Error closing gzip writer: %v\n", err)
+		}
+	}()
+
+	tarWriter := tar.NewWriter(gzipWriter)
+
+	defer func() {
+		if err := tarWriter.Close(); err != nil {
+			fmt.Printf("Error closing tar writer: %v\n", err)
+		}
+	}()
+
+	for _, srcFilePath := range srcFilePaths {
+		info, err := os.Stat(srcFilePath)
+
+		if err != nil {
+			return err
+		}
+
+		basePath := path.Dir(srcFilePath)
+
+		if err := addFileToTarArchive(tarWriter, srcFilePath, basePath); err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			if err := filepath.WalkDir(srcFilePath, func(path string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+
+				if path == srcFilePath {
+					return nil
+				}
+
+				return addFileToTarArchive(tarWriter, path, basePath)
+			}); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil

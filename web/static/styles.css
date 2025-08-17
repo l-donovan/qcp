@@ -67,7 +67,6 @@ body {
     padding-bottom: 2px;
 }
 
-
 .input-bar .repo:visited {
     color: inherit;
 }
@@ -89,11 +88,11 @@ input {
     color: var(--yellow);
 }
 
-.green, .entry[directory="false"] .name, .download {
+.green, .entry[data-entry-is-directory="false"] .name, .download {
     color: var(--green);
 }
 
-.blue, .entry[directory="true"] .name {
+.blue, .entry[data-entry-is-directory="true"] .name {
     color: var(--blue);
 }
 
@@ -101,19 +100,23 @@ input {
     cursor: default;
 }
 
+.entry .download-selector {
+    vertical-align: -2px;
+}
+
 .entry .download {
     cursor: pointer;
 }
 
-.entry[directory="true"] .name {
+.entry[data-entry-is-directory="true"] .name {
     cursor: pointer;
 }
 
-.entry[directory="true"] .name:hover {
+.entry[data-entry-is-directory="true"] .name:hover {
     filter: hue-rotate(40deg);
 }
 
-.entry .download, .entry .perm {
+.entry .download-selector, .entry .download, .entry .perm {
     margin-right: 1ch;
 }
 
@@ -181,9 +184,11 @@ input {
     position: fixed;
     bottom: 1rem;
     width: 100%;
+    pointer-events: none; 
 }
 
 .rounded-container {
+    pointer-events: auto;
     padding: 0.5rem;
     border-radius: 0.5rem;
     background: rgb(from var(--green) r g b / 0.1);

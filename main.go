@@ -41,6 +41,9 @@ func main() {
 			s.AddFlag("directory", 'd', "source should be treated as a directory", false)
 			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
 		},
+		"_serve-multiple": func(s *goparse.Parser) {
+			s.AddListParameter("sources", "files/directories to serve", 1)
+		},
 		"upload": func(s *goparse.Parser) {
 			// Client mode
 			s.AddParameter("source", "file to upload")
@@ -126,17 +129,19 @@ func main() {
 		uncompressed := args["uncompressed"].(bool)
 
 		if isDirectory {
-			err := serve.ServeDirectory(srcFilePath, os.Stdout)
-
-			if err != nil {
+			if err := serve.ServeDirectory(srcFilePath, os.Stdout); err != nil {
 				exitWithError(err)
 			}
 		} else {
-			err := serve.ServeFile(srcFilePath, os.Stdout, !uncompressed)
-
-			if err != nil {
+			if err := serve.ServeFile(srcFilePath, os.Stdout, !uncompressed); err != nil {
 				exitWithError(err)
 			}
+		}
+	case "serve-multiple":
+		srcFilePaths := args["sources"].([]string)
+
+		if err := serve.ServeMultipleFiles(srcFilePaths, os.Stdout); err != nil {
+			exitWithError(err)
 		}
 	case "upload":
 		srcFilePath := args["source"].(string)

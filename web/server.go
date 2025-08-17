@@ -180,6 +180,7 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 				fmt.Printf("Downloading %s\n", filepath)
 				cmd := fmt.Sprintf("%s serve %s", executable, filepath)
 
+				// TODO: Why can't we determine this via a stat or something?
 				if request.Mode.IsDir() {
 					cmd += " -d"
 				}
@@ -208,6 +209,45 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 				fmt.Printf("Created new download link for %s: %s\n", filepath, downloadLink)
 
 				return []byte(fmt.Sprintf("download %s", downloadLink))
+			case "download-bulk":
+				var request []common.ThinDirEntry
+
+				if err := json.Unmarshal(argsRaw, &request); err != nil {
+					return []byte(err.Error())
+				}
+
+				filepaths := make([]string, len(request))
+
+				for i, item := range request {
+					filepaths[i] = path.Join(currentDir, item.Name)
+				}
+
+				fmt.Printf("Downloading %s\n", strings.Join(filepaths, ", "))
+
+				// TODO: We really need some shlex escaping here (and above).
+				cmd := fmt.Sprintf("%s serve-multiple %s", executable, strings.Join(filepaths, " "))
+				downloadSession, err := startSession(client, cmd)
+
+				if err != nil {
+					return []byte(err.Error())
+				}
+
+				filename := createIdentifier(filepaths)
+
+				// TODO: We want compression parameterized.
+				downloadInfo := DownloadInfo{Filename: filename + ".tar.gz", Contents: downloadSession.Stdout, Compressed: true}
+
+				id, err := uuid.NewRandom()
+
+				if err != nil {
+					return []byte(err.Error())
+				}
+
+				downloadLink := fmt.Sprintf("/file/%s", id.String())
+				h.files.Store(id.String(), downloadInfo)
+				fmt.Printf("Created new download link for %s: %s\n", strings.Join(filepaths, ", "), downloadLink)
+
+				return []byte(fmt.Sprintf("download %s", downloadLink))
 			case "enter":
 				var request common.ThinDirEntry
 
@@ -222,7 +262,7 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 				}
 
 				currentDir = path.Join(currentDir, request.Name)
-				return []byte("entered")
+				return []byte(fmt.Sprintf("entered %s", currentDir))
 			}
 
 			return []byte(fmt.Sprintf("? %s", message))
@@ -234,6 +274,24 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func createIdentifier(names []string) string {
+	basenames := make([]string, len(names))
+
+	for i, name := range names {
+		basenames[i] = path.Base(name)
+	}
+
+	id := strings.Join(basenames, "__")
+	maxLen := 50
+	andMore := " (...)"
+
+	if len(id) > maxLen {
+		id = id[:(maxLen-len(andMore))] + andMore
+	}
+
+	return id
 }
 
 func createClient(request RequestConnection) (*ssh.Client, error) {
