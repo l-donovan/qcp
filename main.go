@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/l-donovan/qcp/sessions"
 	"net/http"
 	"os"
 
 	"github.com/l-donovan/goparse"
 	"github.com/l-donovan/qcp/common"
-	"github.com/l-donovan/qcp/receive"
 	"github.com/l-donovan/qcp/serve"
 	"github.com/l-donovan/qcp/sideload"
 	"github.com/l-donovan/qcp/web"
@@ -31,17 +31,12 @@ func main() {
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.AddParameter("source", "file to download")
 			s.AddParameter("destination", "location of downloaded file")
-			s.AddFlag("directory", 'd', "source should be treated as a directory", false)
 			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
-			s.AddValueFlag("executable", 'e', "description", "path", "")
 		},
 		"_serve": func(s *goparse.Parser) {
 			// Server mode (hidden)
-			s.AddParameter("source", "file to serve")
-			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
-		},
-		"_serve-multiple": func(s *goparse.Parser) {
 			s.AddListParameter("sources", "files/directories to serve", 1)
+			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
 		},
 		"upload": func(s *goparse.Parser) {
 			// Client mode
@@ -49,7 +44,6 @@ func main() {
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.AddParameter("destination", "location of uploaded file")
 			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
-			s.AddValueFlag("executable", 'e', "description", "path", "")
 		},
 		"_receive": func(s *goparse.Parser) {
 			// Server mode (hidden)
@@ -59,7 +53,6 @@ func main() {
 			// Client mode
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.AddValueFlag("location", 'l', "", "path", "$HOME")
-			s.AddValueFlag("executable", 'e', "description", "path", "")
 		},
 		"_present": func(s *goparse.Parser) {
 			// Server mode (hidden)
@@ -84,8 +77,6 @@ func main() {
 		connectionString := args["hostname"].(string)
 		srcFilePath := args["source"].(string)
 		dstFilePath := args["destination"].(string)
-		isDirectory := args["directory"].(bool)
-		executable := args["executable"].(string)
 		uncompressed := args["uncompressed"].(bool)
 
 		info, err := common.ParseConnectionString(connectionString)
@@ -106,49 +97,35 @@ func main() {
 			}
 		}()
 
-		if isDirectory {
-			err := receive.DownloadDirectory(remoteClient, srcFilePath, dstFilePath, executable)
-
-			if err != nil {
-				exitWithError(err)
-			}
-		} else {
-			err = receive.DownloadFile(remoteClient, srcFilePath, dstFilePath, executable, !uncompressed)
-
-			if err != nil {
-				exitWithError(err)
-			}
+		if err := sessions.Download(remoteClient, srcFilePath, dstFilePath, !uncompressed); err != nil {
+			exitWithError(err)
 		}
 	case "serve":
-		srcFilePath := args["source"].(string)
+		srcFilePaths := args["sources"].([]string)
 		uncompressed := args["uncompressed"].(bool)
 
-		fileInfo, err := os.Stat(srcFilePath)
+		fileInfo, err := os.Stat(srcFilePaths[0])
 
 		if err != nil {
 			exitWithError(err)
 		}
 
-		if fileInfo.IsDir() {
-			if err := serve.ServeDirectory(srcFilePath, os.Stdout); err != nil {
-				exitWithError(err)
-			}
-		} else {
-			if err := serve.ServeFile(srcFilePath, os.Stdout, !uncompressed); err != nil {
-				exitWithError(err)
-			}
-		}
-	case "serve-multiple":
-		srcFilePaths := args["sources"].([]string)
+		uploadInfo := serve.UploadInfo{
+			Filenames:   srcFilePaths,
+			Destination: os.Stdout,
 
-		if err := serve.ServeMultipleFiles(srcFilePaths, os.Stdout); err != nil {
+			// These values may be irrelevant, depending on the input.
+			Directory:  fileInfo.IsDir(),
+			Compressed: !uncompressed,
+		}
+
+		if err := uploadInfo.Serve(); err != nil {
 			exitWithError(err)
 		}
 	case "upload":
 		srcFilePath := args["source"].(string)
 		connectionString := args["hostname"].(string)
 		dstFilePath := args["destination"].(string)
-		executable := args["executable"].(string)
 		uncompressed := args["uncompressed"].(bool)
 
 		info, err := common.ParseConnectionString(connectionString)
@@ -169,31 +146,24 @@ func main() {
 			}
 		}()
 
-		fileInfo, err := os.Stat(srcFilePath)
+		if err := sessions.Upload(remoteClient, srcFilePath, dstFilePath, !uncompressed); err != nil {
+			exitWithError(err)
+		}
+	case "receive":
+		dstFilePath := args["destination"].(string)
+
+		downloadInfo, err := sessions.GetDownloadInfo(dstFilePath, os.Stdin)
 
 		if err != nil {
 			exitWithError(err)
 		}
 
-		if fileInfo.IsDir() {
-			if err := serve.UploadDirectory(remoteClient, srcFilePath, dstFilePath, executable); err != nil {
-				exitWithError(err)
-			}
-		} else {
-			if err := serve.UploadFile(remoteClient, srcFilePath, dstFilePath, executable, !uncompressed); err != nil {
-				exitWithError(err)
-			}
-		}
-	case "receive":
-		dstFilePath := args["destination"].(string)
-
-		if err := receive.Receive(dstFilePath, os.Stdin); err != nil {
+		if err := downloadInfo.Receive(); err != nil {
 			exitWithError(err)
 		}
 	case "pick":
 		connectionString := args["hostname"].(string)
 		location := args["location"].(string)
-		executable := args["executable"].(string)
 
 		info, err := common.ParseConnectionString(connectionString)
 
@@ -213,16 +183,20 @@ func main() {
 			}
 		}()
 
-		if err := receive.Pick(remoteClient, location, executable); err != nil {
+		if err := sessions.Pick(remoteClient, location); err != nil {
 			exitWithError(err)
 		}
 	case "present":
 		location := args["location"].(string)
 
-		err := serve.Present(location, os.Stdin, os.Stdout)
+		browseInfo := serve.BrowseInfo{
+			Location:    location,
+			Source:      os.Stdin,
+			Destination: os.Stdout,
+		}
 
-		if err != nil {
-			exitWithError(err)
+		if err := browseInfo.Present(); err != nil {
+			exitWithMessage("present: %v", err)
 		}
 	case "sideload":
 		connectionString := args["hostname"].(string)
@@ -261,8 +235,6 @@ func main() {
 			Addr:    ":8543",
 			Handler: handler,
 		}
-
-		defer handler.CloseClients()
 
 		fmt.Printf("Serving on %s\n", server.Addr)
 

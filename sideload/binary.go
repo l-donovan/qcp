@@ -51,9 +51,8 @@ func getBinaryUrl(release, hostOs, hostArch string) (string, error) {
 	}()
 
 	var releaseInfo map[string]any
-	err = json.Unmarshal(res, &releaseInfo)
 
-	if err != nil {
+	if err := json.Unmarshal(res, &releaseInfo); err != nil {
 		return "", err
 	}
 
@@ -71,18 +70,14 @@ func getBinaryUrl(release, hostOs, hostArch string) (string, error) {
 }
 
 func transferBinary(client *ssh.Client, tarReader *tar.Reader, location string) error {
-	err := common.RunWithPipes(client, fmt.Sprintf("cat > %s", location), func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
+	if err := common.RunWithPipes(client, fmt.Sprintf("cat > %s", location), func(stdin io.WriteCloser, stdout, stderr io.Reader) error {
 		_, err := io.Copy(stdin, tarReader)
 		return err
-	})
-
-	if err != nil {
+	}); err != nil {
 		return err
 	}
 
-	err = makeExecutable(client, location)
-
-	if err != nil {
+	if err := makeExecutable(client, location); err != nil {
 		return err
 	}
 

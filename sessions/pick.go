@@ -1,19 +1,13 @@
-package receive
+package sessions
 
 import (
-	"bufio"
 	"fmt"
-	"io"
-	"os"
-	"path"
-	"strings"
-
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/l-donovan/qcp/common"
-	"github.com/l-donovan/qcp/protocol"
+	"golang.org/x/crypto/ssh"
 )
 
 var (
@@ -25,7 +19,7 @@ var (
 			Padding(0, 1)
 )
 
-func newItemDelegate(keys *delegateKeyMap, app *model) list.ItemDelegate {
+func newItemDelegate(keys *delegateKeyMap, app *pickSession) list.ItemDelegate {
 	d := list.NewDefaultDelegate()
 
 	d.UpdateFunc = func(msg tea.Msg, m *list.Model) tea.Cmd {
@@ -162,27 +156,25 @@ func newListKeyMap() *listKeyMap {
 	}
 }
 
-type model struct {
-	path         *string
-	list         list.Model
-	keys         *listKeyMap
-	delegateKeys *delegateKeyMap
-	stdin        io.WriteCloser
-	stdout       io.Reader
+type pickSession struct {
+	path          *string
+	list          list.Model
+	keys          *listKeyMap
+	delegateKeys  *delegateKeyMap
+	browseSession BrowseSession
 }
 
-func newModel(stdin io.WriteCloser, stdout io.Reader, location string) (model, error) {
+func newPickSession(session BrowseSession, location string) (pickSession, error) {
 	var (
 		delegateKeys = newDelegateKeyMap()
 		listKeys     = newListKeyMap()
 	)
 
-	m := model{
-		path:         &location,
-		stdin:        stdin,
-		stdout:       stdout,
-		delegateKeys: delegateKeys,
-		keys:         listKeys,
+	m := pickSession{
+		path:          &location,
+		browseSession: session,
+		delegateKeys:  delegateKeys,
+		keys:          listKeys,
 	}
 
 	entries, err := m.GetFiles()
@@ -211,11 +203,11 @@ func newModel(stdin io.WriteCloser, stdout io.Reader, location string) (model, e
 	return m, nil
 }
 
-func (m model) Init() tea.Cmd {
+func (m pickSession) Init() tea.Cmd {
 	return nil
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m pickSession) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -259,96 +251,60 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m model) View() string {
+func (m pickSession) View() string {
 	return appStyle.Render(m.list.View())
 }
 
-func (m model) GetFiles() ([]list.Item, error) {
-	srcReader := bufio.NewReader(m.stdout)
+func (m pickSession) GetFiles() ([]list.Item, error) {
+	contents, err := m.browseSession.ListContents()
 
-	// List files
-	if _, err := m.stdin.Write([]byte{protocol.ListFiles}); err != nil {
-		return nil, err
-	}
-
-	// Get output
-	result, err := srcReader.ReadString(protocol.EndTransmission)
-
-	// We don't expect an EOF here, so we treat it as a normal error
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list contents: %v", err)
 	}
 
-	var entries []list.Item
-	serializedEntries := strings.Split(strings.TrimSuffix(result, string(protocol.EndTransmission)), string(protocol.FileSeparator))
+	entries := make([]list.Item, len(contents))
 
-	for _, rawEntry := range serializedEntries {
-		// This happens in empty directories because strings.Split("", "<separator>") returns []string{""}, not []string{}
-		if rawEntry == "" {
-			continue
-		}
-
-		entry, err := common.DeserializeDirEntry(rawEntry)
-
-		if err != nil {
-			return nil, err
-		}
-
-		entries = append(entries, *entry)
+	for i, item := range contents {
+		entries[i] = item
 	}
 
 	return entries, nil
 }
 
-func (m *model) SelectFile(entry common.ThinDirEntry) error {
-	if _, err := m.stdin.Write([]byte{protocol.Select}); err != nil {
-		return err
+func (m pickSession) SelectFile(entry common.ThinDirEntry) error {
+	downloadInfo, err := m.browseSession.SelectFile(entry.Name)
+
+	if err != nil {
+		return fmt.Errorf("select file: %v", err)
 	}
 
-	if _, err := m.stdin.Write([]byte(entry.Name)); err != nil {
-		return err
+	if err := downloadInfo.Receive(); err != nil {
+		return fmt.Errorf("receive %s: %v", entry.Name, err)
 	}
-
-	if _, err := m.stdin.Write([]byte{protocol.EndTransmission}); err != nil {
-		return err
-	}
-
-	return Receive(entry.Name, m.stdout)
-}
-
-func (m *model) EnterDirectory(location string) error {
-	if _, err := m.stdin.Write([]byte{protocol.Enter}); err != nil {
-		return err
-	}
-
-	if _, err := m.stdin.Write([]byte(location)); err != nil {
-		return err
-	}
-
-	if _, err := m.stdin.Write([]byte{protocol.EndTransmission}); err != nil {
-		return err
-	}
-
-	*m.path = path.Join(*m.path, location)
 
 	return nil
 }
 
-func pick(stdin io.WriteCloser, stdout io.Reader, location string) error {
-	defer func() {
-		// Make sure we clean up after ourselves
-		if _, err := stdin.Write([]byte{protocol.Quit}); err != nil && err != io.EOF {
-			_, _ = fmt.Fprintf(os.Stderr, "error when sending quit message to qcp process on remote host: %v\n", err)
-		}
-	}()
+func (m *pickSession) EnterDirectory(location string) error {
+	return m.browseSession.EnterDirectory(location)
+}
 
-	app, err := newModel(stdin, stdout, location)
+func Pick(client *ssh.Client, location string) error {
+	browseSession, err := Browse(client, location)
+
+	if err != nil {
+		return fmt.Errorf("present %s: %v", location, err)
+	}
+
+	defer browseSession.Stop()
+
+	pickSession, err := newPickSession(browseSession, location)
 
 	if err != nil {
 		return err
 	}
 
-	if _, err := tea.NewProgram(app, tea.WithAltScreen()).Run(); err != nil {
+	if _, err := tea.NewProgram(pickSession, tea.WithAltScreen()).Run(); err != nil {
 		return err
 	}
 

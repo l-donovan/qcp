@@ -4,5 +4,4 @@ const (
 	ListFiles = 'L'
 	Quit      = 'Q'
 	Enter     = 'E'
-	Select    = 'S'
 )

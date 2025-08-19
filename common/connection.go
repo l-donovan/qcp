@@ -157,7 +157,7 @@ func FindExecutable(client *ssh.Client, name string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func LogErrors(stderr io.Reader) {
+func logErrors(stderr io.Reader) {
 	stderrReader := bufio.NewReader(stderr)
 
 	for {
@@ -218,52 +218,30 @@ func Start(client *ssh.Client, cmd string) (Session, error) {
 }
 
 func RunWithPipes(client *ssh.Client, cmd string, handle RunHandler) error {
-	session, err := client.NewSession()
+	session, err := Start(client, cmd)
 
 	if err != nil {
-		return fmt.Errorf("create session: %v", err)
+		return fmt.Errorf("start session: %v", err)
 	}
 
 	defer func() {
-		if err := session.Close(); err != nil && err != io.EOF {
-			fmt.Fprintf(os.Stderr, "Error closing session: %v\n", err)
+		if err := session.Session.Close(); err != nil && err != io.EOF {
+			_, _ = fmt.Fprintf(os.Stderr, "Error closing session: %v\n", err)
 		}
 	}()
 
-	stdin, err := session.StdinPipe()
+	go logErrors(session.Stderr)
 
-	if err != nil {
-		return fmt.Errorf("get stdin pipe: %v", err)
-	}
-
-	stdout, err := session.StdoutPipe()
-
-	if err != nil {
-		return fmt.Errorf("get stdout pipe: %v", err)
-	}
-
-	stderr, err := session.StderrPipe()
-
-	if err != nil {
-		return fmt.Errorf("get stderr pipe: %v", err)
-	}
-
-	if err := session.Start(cmd); err != nil {
-		return fmt.Errorf("start command: %v", err)
-	}
-
-	go LogErrors(stderr)
-
-	if err := handle(stdin, stdout, stderr); err != nil {
+	if err := handle(session.Stdin, session.Stdout, session.Stderr); err != nil {
 		return fmt.Errorf("run handler: %v", err)
 	}
 
 	// We also check for EOF in case `handle` already closed stdin
-	if err := stdin.Close(); err != nil && err != io.EOF {
+	if err := session.Stdin.Close(); err != nil && err != io.EOF {
 		return fmt.Errorf("close stdin: %v", err)
 	}
 
-	if err := session.Wait(); err != nil {
+	if err := session.Session.Wait(); err != nil {
 		return fmt.Errorf("wait for command: %v", err)
 	}
 

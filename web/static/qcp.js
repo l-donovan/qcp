@@ -145,15 +145,9 @@ function openConnection() {
             document.getElementById("upload").setAttribute("disabled", "true");
         } else if (evt.data.startsWith("list ")) {
             const payload = JSON.parse(evt.data.slice(evt.data.indexOf(" ") + 1))
-            files.replaceChildren();
-            files.appendChild(createEntry({mode: 2 ** 31, name: ".."}));
-
-            payload.forEach(item => {
-                files.appendChild(createEntry(item));
-            });
+            files.replaceChildren(createEntry({mode: 2 ** 31, name: ".."}), ...payload.map(createEntry));
         } else if (evt.data.startsWith("entered ")) {
-            let newLocation = evt.data.slice(evt.data.indexOf(" ") + 1);
-            loc.value = newLocation;
+            loc.value = evt.data.slice(evt.data.indexOf(" ") + 1);
             listFiles();
         } else if (evt.data.startsWith("download ")) {
             let components = evt.data.split(" ");
@@ -189,10 +183,6 @@ function disconnect() {
 
 function listFiles() {
     ws.send("list");
-}
-
-function withWebsocket(fn) {
-    return () => !ws ? () => {} : fn;
 }
 
 function getParentItem(el) {
