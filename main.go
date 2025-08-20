@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/l-donovan/qcp/sessions"
 	"net/http"
 	"os"
+
+	"github.com/l-donovan/qcp/sessions"
 
 	"github.com/l-donovan/goparse"
 	"github.com/l-donovan/qcp/common"
@@ -97,7 +98,7 @@ func main() {
 			}
 		}()
 
-		if err := sessions.Download(remoteClient, srcFilePath, dstFilePath, !uncompressed); err != nil {
+		if err := sessions.Download(remoteClient, []string{srcFilePath}, dstFilePath, !uncompressed); err != nil {
 			exitWithError(err)
 		}
 	case "serve":

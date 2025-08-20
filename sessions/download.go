@@ -3,52 +3,43 @@ package sessions
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
+	"os"
+	"strings"
+
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/protocol"
 	"github.com/l-donovan/qcp/serve"
 	"golang.org/x/crypto/ssh"
-	"io"
-	"os"
-	"strings"
+
+	"al.essio.dev/pkg/shellescape"
 )
 
 type DownloadSession interface {
-	GetDownloadInfo(filename string) (serve.DownloadInfo, error) // TODO: This needs a better name. It doesn't really download.
+	GetDownloadInfo(filename string) (serve.DownloadInfo, error)
 	Stop()
 }
+
 type downloadSession common.Session
 
-func StartDownload(client *ssh.Client, filepath string, compress bool) (DownloadSession, error) {
+func StartDownload(client *ssh.Client, filepaths []string, compress bool) (DownloadSession, error) {
 	executable, err := common.FindExecutable(client, "qcp")
 
 	if err != nil {
 		return nil, fmt.Errorf("find executable: %v", err)
 	}
 
-	cmd := fmt.Sprintf("%s serve %s", executable, filepath)
+	for i, filePath := range filepaths {
+		filepaths[i] = shellescape.Quote(filePath)
+	}
+
+	cmd := fmt.Sprintf("%s serve %s", executable, strings.Join(filepaths, " "))
+	fmt.Printf("Running on remote: %s\n", cmd)
 
 	if !compress {
 		cmd += " -u"
 	}
 
-	session, err := common.Start(client, cmd)
-
-	if err != nil {
-		return nil, fmt.Errorf("start session: %v", err)
-	}
-
-	return downloadSession(session), nil
-}
-
-func StartMultipleDownload(client *ssh.Client, filepaths []string) (DownloadSession, error) {
-	executable, err := common.FindExecutable(client, "qcp")
-
-	if err != nil {
-		return nil, fmt.Errorf("find executable: %v", err)
-	}
-
-	// TODO: We really need some shlex escaping here (and above).
-	cmd := fmt.Sprintf("%s serve-multiple %s", executable, strings.Join(filepaths, " "))
 	session, err := common.Start(client, cmd)
 
 	if err != nil {
@@ -113,11 +104,11 @@ func (s downloadSession) Stop() {
 	s.Session.Close()
 }
 
-func Download(client *ssh.Client, srcFilePath, dstFilePath string, compress bool) error {
-	session, err := StartDownload(client, srcFilePath, compress)
+func Download(client *ssh.Client, srcFilePaths []string, dstFilePath string, compress bool) error {
+	session, err := StartDownload(client, srcFilePaths, compress)
 
 	if err != nil {
-		return fmt.Errorf("serve %s: %v", srcFilePath, err)
+		return fmt.Errorf("serve %s: %v", srcFilePaths, err)
 	}
 
 	defer session.Stop()
@@ -129,7 +120,7 @@ func Download(client *ssh.Client, srcFilePath, dstFilePath string, compress bool
 	}
 
 	if err := downloadInfo.Receive(); err != nil {
-		return fmt.Errorf("receive %s: %v", srcFilePath, err)
+		return fmt.Errorf("receive %v: %v", srcFilePaths, err)
 	}
 
 	return nil

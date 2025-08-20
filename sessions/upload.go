@@ -2,17 +2,20 @@ package sessions
 
 import (
 	"fmt"
+	"io"
+	"os"
+
+	"al.essio.dev/pkg/shellescape"
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/serve"
 	"golang.org/x/crypto/ssh"
-	"io"
-	"os"
 )
 
 type UploadSession interface {
-	GetUploadInfo(filename string, compress bool) (serve.UploadInfo, error) // TODO: This needs a better name. It doesn't really download.
+	GetUploadInfo(filename string, compress bool) (serve.UploadInfo, error)
 	Wait()
 }
+
 type uploadSession common.Session
 
 func StartUpload(client *ssh.Client, filepath string) (UploadSession, error) {
@@ -22,7 +25,7 @@ func StartUpload(client *ssh.Client, filepath string) (UploadSession, error) {
 		return nil, fmt.Errorf("find executable: %v", err)
 	}
 
-	cmd := fmt.Sprintf("%s receive %s", executable, filepath)
+	cmd := fmt.Sprintf("%s receive %s", executable, shellescape.Quote(filepath))
 
 	session, err := common.Start(client, cmd)
 

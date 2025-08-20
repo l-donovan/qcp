@@ -3,14 +3,16 @@ package sessions
 import (
 	"bufio"
 	"fmt"
-	"github.com/l-donovan/qcp/common"
-	"github.com/l-donovan/qcp/protocol"
-	"github.com/l-donovan/qcp/serve"
-	"golang.org/x/crypto/ssh"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"al.essio.dev/pkg/shellescape"
+	"github.com/l-donovan/qcp/common"
+	"github.com/l-donovan/qcp/protocol"
+	"github.com/l-donovan/qcp/serve"
+	"golang.org/x/crypto/ssh"
 )
 
 type BrowseSession interface {
@@ -33,7 +35,7 @@ func Browse(client *ssh.Client, location string) (BrowseSession, error) {
 		return nil, fmt.Errorf("find executable: %v", err)
 	}
 
-	cmd := fmt.Sprintf("%s present %s", executable, location)
+	cmd := fmt.Sprintf("%s present %s", executable, shellescape.Quote(location))
 	session, err := common.Start(client, cmd)
 
 	if err != nil {
@@ -94,13 +96,13 @@ func (s browseSession) SelectFile(name string) (serve.DownloadInfo, error) {
 	srcFilePath := filepath.Join(s.path, name)
 
 	// TODO: Parameterize `compress`.
-	session, err := StartDownload(s.client, srcFilePath, true)
+	session, err := StartDownload(s.client, []string{srcFilePath}, true)
 
 	if err != nil {
 		return serve.DownloadInfo{}, fmt.Errorf("start download %s: %v", srcFilePath, err)
 	}
 
-	defer session.Stop()
+	// defer session.Stop()
 
 	return session.GetDownloadInfo(name)
 }

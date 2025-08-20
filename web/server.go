@@ -6,14 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/l-donovan/qcp/serve"
-	"github.com/l-donovan/qcp/sessions"
 	"html/template"
 	"net/http"
 	"os"
 	"path"
 	"strings"
 	"sync"
+
+	"github.com/l-donovan/qcp/serve"
+	"github.com/l-donovan/qcp/sessions"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -146,7 +147,7 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 
 				return append([]byte("list "), body...)
 			case "download":
-				var request common.ThinDirEntry
+				var request []common.ThinDirEntry
 
 				if err := json.Unmarshal(argsRaw, &request); err != nil {
 					return []byte(err.Error())
@@ -154,40 +155,6 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 
 				// Downloads get their own session. This way we can use EOF to easily
 				// determine when a download stream is completed.
-
-				filepath := path.Join(currentDir, request.Name)
-				fmt.Printf("Downloading %s\n", filepath)
-
-				// TODO: We want compression parameterized.
-				downloadSession, err := sessions.StartDownload(client, filepath, true)
-
-				if err != nil {
-					return []byte(err.Error())
-				}
-
-				downloadInfo, err := downloadSession.GetDownloadInfo(request.Name)
-
-				if err != nil {
-					return []byte(err.Error())
-				}
-
-				id, err := uuid.NewRandom()
-
-				if err != nil {
-					return []byte(err.Error())
-				}
-
-				downloadLink := fmt.Sprintf("/file/%s", id.String())
-				h.files.Store(id.String(), downloadInfo)
-				fmt.Printf("Created new download link for %s: %s\n", filepath, downloadLink)
-
-				return []byte(fmt.Sprintf("download %s", downloadLink))
-			case "download-bulk":
-				var request []common.ThinDirEntry
-
-				if err := json.Unmarshal(argsRaw, &request); err != nil {
-					return []byte(err.Error())
-				}
 
 				filepaths := make([]string, len(request))
 
@@ -197,13 +164,21 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 
 				fmt.Printf("Downloading %s\n", strings.Join(filepaths, ", "))
 
-				downloadSession, err := sessions.StartMultipleDownload(client, filepaths)
+				// TODO: We want compression parameterized.
+				downloadSession, err := sessions.StartDownload(client, filepaths, true)
 
 				if err != nil {
 					return []byte(err.Error())
 				}
 
-				filename := createIdentifier(filepaths)
+				var filename string
+
+				if len(request) > 1 {
+					filename = createIdentifier(filepaths)
+				} else {
+					filename = request[0].Name
+				}
+
 				downloadInfo, err := downloadSession.GetDownloadInfo(filename)
 
 				if err != nil {

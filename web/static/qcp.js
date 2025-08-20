@@ -195,8 +195,8 @@ function getParentItem(el) {
 }
 
 function download(evt) {
-    const item = getParentItem(evt.target);
-    const payload = `download ${JSON.stringify(item)}`;
+    const items = [getParentItem(evt.target)];
+    const payload = `download ${JSON.stringify(items)}`;
 
     console.log("> " + payload);
     ws.send(payload);
@@ -204,7 +204,7 @@ function download(evt) {
 
 function downloadBulk() {
     const items = Array.from(document.querySelectorAll("input.download-selector:checked")).map(getParentItem);
-    const payload = `download-bulk ${JSON.stringify(items)}`;
+    const payload = `download ${JSON.stringify(items)}`;
 
     console.log("> " + payload)
     ws.send(payload);
