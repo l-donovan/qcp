@@ -80,11 +80,18 @@ function createEntry(item) {
     entry.appendChild(selectCheckbox);
 
     let downloadButton = document.createElement("span");
-    downloadButton.textContent = "○";
-    downloadButton.classList.add("download");
+    downloadButton.classList.add("material-symbols-outlined", "download");
+    downloadButton.innerHTML = "download";
     downloadButton.title = `Download ${item.name}`;
     downloadButton.onclick = download;
     entry.appendChild(downloadButton);
+
+    let previewButton = document.createElement("span");
+    previewButton.classList.add("material-symbols-outlined", "preview");
+    previewButton.innerHTML = "document_search";
+    previewButton.title = `Preview ${item.name}`;
+    // previewButton.onclick = preview;
+    entry.appendChild(previewButton);
 
     let perms = document.createElement("span");
     perms.classList.add("perm");

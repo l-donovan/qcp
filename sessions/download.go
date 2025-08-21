@@ -34,7 +34,6 @@ func StartDownload(client *ssh.Client, filepaths []string, compress bool) (Downl
 	}
 
 	cmd := fmt.Sprintf("%s serve %s", executable, strings.Join(filepaths, " "))
-	fmt.Printf("Running on remote: %s\n", cmd)
 
 	if !compress {
 		cmd += " -u"

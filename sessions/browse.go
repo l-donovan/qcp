@@ -11,14 +11,13 @@ import (
 	"al.essio.dev/pkg/shellescape"
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/protocol"
-	"github.com/l-donovan/qcp/serve"
 	"golang.org/x/crypto/ssh"
 )
 
 type BrowseSession interface {
 	EnterDirectory(name string) error
 	ListContents() ([]common.ThinDirEntry, error)
-	SelectFile(name string) (serve.DownloadInfo, error)
+	DownloadFile(name string, compress bool) (DownloadSession, error)
 	Stop()
 }
 
@@ -42,10 +41,10 @@ func Browse(client *ssh.Client, location string) (BrowseSession, error) {
 		return nil, fmt.Errorf("start session: %v", err)
 	}
 
-	return browseSession{session, location, client}, nil
+	return &browseSession{session, location, client}, nil
 }
 
-func (s browseSession) EnterDirectory(name string) error {
+func (s *browseSession) EnterDirectory(name string) error {
 	if _, err := fmt.Fprintf(s.Stdin, "%c%s%c", protocol.Enter, name, protocol.EndTransmission); err != nil {
 		return err
 	}
@@ -92,19 +91,10 @@ func (s browseSession) ListContents() ([]common.ThinDirEntry, error) {
 	return entries, nil
 }
 
-func (s browseSession) SelectFile(name string) (serve.DownloadInfo, error) {
+func (s browseSession) DownloadFile(name string, compress bool) (DownloadSession, error) {
 	srcFilePath := filepath.Join(s.path, name)
 
-	// TODO: Parameterize `compress`.
-	session, err := StartDownload(s.client, []string{srcFilePath}, true)
-
-	if err != nil {
-		return serve.DownloadInfo{}, fmt.Errorf("start download %s: %v", srcFilePath, err)
-	}
-
-	// defer session.Stop()
-
-	return session.GetDownloadInfo(name)
+	return StartDownload(s.client, []string{srcFilePath}, compress)
 }
 
 func (s browseSession) Stop() {

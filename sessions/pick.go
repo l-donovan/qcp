@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"fmt"
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -272,7 +273,16 @@ func (m pickSession) GetFiles() ([]list.Item, error) {
 }
 
 func (m pickSession) SelectFile(entry common.ThinDirEntry) error {
-	downloadInfo, err := m.browseSession.SelectFile(entry.Name)
+	// TODO: Parameterize `compress`.
+	downloadSession, err := m.browseSession.DownloadFile(entry.Name, true)
+
+	if err != nil {
+		return fmt.Errorf("start download %s: %v", entry.Name, err)
+	}
+
+	defer downloadSession.Stop()
+
+	downloadInfo, err := downloadSession.GetDownloadInfo(entry.Name)
 
 	if err != nil {
 		return fmt.Errorf("select file: %v", err)
