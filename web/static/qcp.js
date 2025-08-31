@@ -237,9 +237,13 @@ window.addEventListener("load", handleResize);
 window.addEventListener("resize", handleResize);
 
 function handleResize(_event) {
-    const inputBar = document.querySelector(".input-bar");
-    const dimensions = inputBar.getBoundingClientRect();
-    const topOffset = dimensions.top + dimensions.height;
+    const topBar = document.querySelector(".input-bar");
+    const topBarDimensions = topBar.getBoundingClientRect();
+    const topBarOffset = topBarDimensions.bottom;
+    document.documentElement.style.setProperty("--input-bar-offset", `${topBarOffset}px`);
 
-    document.documentElement.style.setProperty("--input-bar-offset", `${topOffset}px`);
+    const bottomBar = document.querySelector(".bottom-bar");
+    const bottomBarDimensions = bottomBar.getBoundingClientRect();
+    const bottomBarOffset = window.screen.height - bottomBarDimensions.top;
+    document.documentElement.style.setProperty("--bottom-bar-offset", `${bottomBarOffset}px`);
 }

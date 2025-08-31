@@ -10,10 +10,11 @@
     --button-radius: 0.25rem;
     --button-padding: 1rem;
 
-    --input-bar-padding: 1rem;
+    --bar-padding: 1rem;
 
     /* This value is calculated dynamically */
     --input-bar-offset: 0;
+    --bottom-bar-offset: 0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -53,7 +54,7 @@ body {
     align-items: center;
     gap: 0.5rem;
     position: fixed;
-    padding-top: var(--input-bar-padding);
+    padding-top: var(--bar-padding);
     width: calc(100vw - 2rem);
     pointer-events: none;
     margin: 0 1rem;
@@ -143,6 +144,10 @@ input[type="text"] {
     color: var(--green);
 }
 
+.entry > .perm {
+    white-space: nowrap;
+}
+
 #files {
     overflow-y: auto;
     padding: 0 0.5rem 0.5rem 0.5rem;
@@ -155,8 +160,12 @@ input[type="text"] {
 }
 
 #files > div:first-child {
-    padding-top: var(--input-bar-padding);
+    padding-top: var(--bar-padding);
     margin-top: var(--input-bar-offset);
+}
+
+#files > div:last-child {
+    margin-bottom: var(--bottom-bar-offset);
 }
 
 .button {
@@ -215,7 +224,8 @@ input[type="text"] {
     justify-content: center;
     align-items: center;
     position: fixed;
-    bottom: 1rem;
+    bottom: 0;
+    padding-bottom: 1rem;
     width: 100%;
     pointer-events: none;
 }
