@@ -232,3 +232,14 @@ async function upload() {
 
     // run code with our fileHandle
 }
+
+window.addEventListener("load", handleResize);
+window.addEventListener("resize", handleResize);
+
+function handleResize(_event) {
+    const inputBar = document.querySelector(".input-bar");
+    const dimensions = inputBar.getBoundingClientRect();
+    const topOffset = dimensions.top + dimensions.height;
+
+    document.documentElement.style.setProperty("--input-bar-offset", `${topOffset}px`);
+}

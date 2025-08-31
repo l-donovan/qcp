@@ -9,6 +9,11 @@
     --button-color: var(--foreground);
     --button-radius: 0.25rem;
     --button-padding: 1rem;
+
+    --input-bar-padding: 1rem;
+
+    /* This value is calculated dynamically */
+    --input-bar-offset: 0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -48,7 +53,7 @@ body {
     align-items: center;
     gap: 0.5rem;
     position: fixed;
-    top: 1rem;
+    padding-top: var(--input-bar-padding);
     width: calc(100vw - 2rem);
     pointer-events: none;
     margin: 0 1rem;
@@ -150,7 +155,8 @@ input[type="text"] {
 }
 
 #files > div:first-child {
-    margin-top: calc(3rem + 2px + var(--file-spacing));
+    padding-top: var(--input-bar-padding);
+    margin-top: var(--input-bar-offset);
 }
 
 .button {
