@@ -158,14 +158,20 @@ func (d DownloadInfo) ReceiveWeb(w http.ResponseWriter) {
 
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "no good")
+		_, _ = fmt.Fprintf(w, "Could not treat http.ResponseWriter as http.Flusher")
 		return
 	}
 
-	mimeType := mime.TypeByExtension(path.Ext(d.Filename))
+	var mimeType string
 
-	if mimeType == "" {
-		mimeType = "text/plain"
+	if d.Directory {
+		mimeType = "application/gzip"
+	} else {
+		mimeType = mime.TypeByExtension(path.Ext(d.Filename))
+
+		if mimeType == "" {
+			mimeType = "text/plain"
+		}
 	}
 
 	w.Header().Set("Content-Type", mimeType)

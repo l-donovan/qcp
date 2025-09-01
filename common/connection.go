@@ -87,6 +87,8 @@ func ParseConnectionString(connection string) (*ConnectionInfo, error) {
 			path = currentUser.HomeDir
 		} else if strings.HasPrefix(val, "~/") {
 			path = filepath.Join(currentUser.HomeDir, val[2:])
+		} else {
+			path = val
 		}
 
 		privateKeyPath = path

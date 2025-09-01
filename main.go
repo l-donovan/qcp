@@ -69,6 +69,12 @@ func main() {
 			// Web interface mode
 			s.AddValueFlag("hostname", 'h', "hostname for web interface", "address", ":8543")
 		},
+		"share": func(s *goparse.Parser) {
+			// Link sharing mode
+			s.AddValueFlag("hostname", 'h', "connection string, in the format [username@]hostname[:port]", "HOST", "")
+			s.AddListParameter("sources", "files/directories to serve", 1)
+			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
+		},
 	})
 
 	args := parser.MustParseArgs()
@@ -240,6 +246,114 @@ func main() {
 		fmt.Printf("Serving on %s\n", server.Addr)
 
 		if err := server.ListenAndServe(); err != nil {
+			exitWithError(err)
+		}
+	case "share":
+		connectionString := args["hostname"].(string)
+		srcFilePaths := args["sources"].([]string)
+		uncompressed := args["uncompressed"].(bool)
+
+		filename := common.CreateIdentifier(srcFilePaths)
+
+		var downloadInfo serve.DownloadInfo
+
+		// Local connection
+		if connectionString == "" {
+			readEnd, writeEnd, err := os.Pipe()
+
+			if err != nil {
+				exitWithError(err)
+			}
+
+			fileInfo, err := os.Stat(srcFilePaths[0])
+
+			if err != nil {
+				exitWithError(err)
+			}
+
+			// When sharing a local file, we create our own UploadInfo.
+
+			uploadInfo := serve.UploadInfo{
+				Filenames:   srcFilePaths,
+				Destination: writeEnd,
+				Directory:   fileInfo.IsDir(),
+				Compressed:  !uncompressed,
+			}
+
+			go func() {
+				if err := uploadInfo.Serve(); err != nil {
+					exitWithError(err)
+				}
+
+				if err := writeEnd.Close(); err != nil {
+					exitWithError(err)
+				}
+			}()
+
+			dlInfo, err := sessions.GetDownloadInfo(filename, readEnd)
+
+			if err != nil {
+				exitWithError(err)
+			}
+
+			downloadInfo = dlInfo
+		} else {
+			info, err := common.ParseConnectionString(connectionString)
+
+			if err != nil {
+				exitWithError(err)
+			}
+
+			remoteClient, err := common.CreateClient(*info)
+
+			if err != nil {
+				exitWithError(err)
+			}
+
+			defer func() {
+				if err := remoteClient.Close(); err != nil {
+					exitWithMessage("error when closing remote client: %v\n", err)
+				}
+			}()
+
+			downloadSession, err := sessions.StartDownload(remoteClient, srcFilePaths, !uncompressed)
+
+			if err != nil {
+				exitWithError(err)
+			}
+
+			defer downloadSession.Stop()
+
+			dlInfo, err := downloadSession.GetDownloadInfo(filename)
+
+			if err != nil {
+				exitWithError(err)
+			}
+
+			downloadInfo = dlInfo
+		}
+
+		ip, err := common.GetOutboundIP()
+
+		if err != nil {
+			exitWithError(err)
+		}
+
+		server := &http.Server{
+			Addr: ip.String() + ":8543",
+		}
+
+		handler, err := web.NewShareHandler(downloadInfo, server)
+
+		if err != nil {
+			exitWithError(err)
+		}
+
+		server.Handler = handler
+
+		fmt.Printf("Download link: http://%s/%s\n", server.Addr, handler.GetDownloadId())
+
+		if err := server.ListenAndServe(); err != http.ErrServerClosed {
 			exitWithError(err)
 		}
 	}

@@ -107,7 +107,7 @@ func Download(client *ssh.Client, srcFilePaths []string, dstFilePath string, com
 	session, err := StartDownload(client, srcFilePaths, compress)
 
 	if err != nil {
-		return fmt.Errorf("serve %s: %v", srcFilePaths, err)
+		return fmt.Errorf("start download: %v", err)
 	}
 
 	defer session.Stop()

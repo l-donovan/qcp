@@ -1,29 +1,41 @@
 package common
 
 import (
-	"os"
-
-	"golang.org/x/crypto/ssh/terminal"
+	"fmt"
+	"net"
+	"path"
+	"strings"
 )
 
-func Getch() (byte, error) {
-	stdinFd := int(os.Stdin.Fd())
-	oldState, err := terminal.MakeRaw(stdinFd)
+func CreateIdentifier(names []string) string {
+	basenames := make([]string, len(names))
 
-	if err != nil {
-		return 0, err
+	for i, name := range names {
+		basenames[i] = path.Base(name)
 	}
 
-	defer func() {
-		terminal.Restore(stdinFd, oldState)
-	}()
+	id := strings.Join(basenames, "__")
+	maxLen := 50
+	andMore := " (...)"
 
-	b := make([]byte, 1)
-	_, err = os.Stdin.Read(b)
-
-	if err != nil {
-		return 0, err
+	if len(id) > maxLen {
+		id = id[:(maxLen-len(andMore))] + andMore
 	}
 
-	return b[0], nil
+	return id
+}
+
+// GetOutboundIP gets the preferred outbound IP address of this machine.
+func GetOutboundIP() (net.IP, error) {
+	conn, err := net.Dial("udp", "1.1.1.1:1")
+
+	if err != nil {
+		return nil, fmt.Errorf("dial: %w", err)
+	}
+
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	return localAddr.IP, nil
 }

@@ -171,14 +171,7 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 					return []byte(err.Error())
 				}
 
-				var filename string
-
-				if len(request) > 1 {
-					filename = createIdentifier(filepaths)
-				} else {
-					filename = request[0].Name
-				}
-
+				filename := common.CreateIdentifier(filepaths)
 				downloadInfo, err := downloadSession.GetDownloadInfo(filename)
 
 				if err != nil {
@@ -222,24 +215,6 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-}
-
-func createIdentifier(names []string) string {
-	basenames := make([]string, len(names))
-
-	for i, name := range names {
-		basenames[i] = path.Base(name)
-	}
-
-	id := strings.Join(basenames, "__")
-	maxLen := 50
-	andMore := " (...)"
-
-	if len(id) > maxLen {
-		id = id[:(maxLen-len(andMore))] + andMore
-	}
-
-	return id
 }
 
 func createClient(request RequestConnection) (*ssh.Client, error) {
