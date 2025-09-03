@@ -21,3 +21,10 @@ The `qcp` executable can also be sideloaded via the `sideload` command!
 
 ### Sideload `qcp` onto a new remote host
 `qcp sideload user@host:port`
+
+`qcp download peachtree /etc/nginx/sites-available`
+`qcp download peachtree /etc/nginx/sites-available -o my-sites`
+`qcp download peachtree /etc/nginx/sites-available/*.conf`
+`qcp download peachtree /etc/nginx/sites-available/*.conf -o sites`
+`qcp download peachtree /etc/nginx/sites-available/my-site.conf`
+`qcp download peachtree /etc/nginx/sites-available/my-site.conf -o luke-site.conf`

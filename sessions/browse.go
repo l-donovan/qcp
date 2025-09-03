@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"al.essio.dev/pkg/shellescape"
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/protocol"
 	"golang.org/x/crypto/ssh"
@@ -31,14 +30,22 @@ func Browse(client *ssh.Client, location string) (BrowseSession, error) {
 	executable, err := common.FindExecutable(client, "qcp")
 
 	if err != nil {
-		return nil, fmt.Errorf("find executable: %v", err)
+		return nil, fmt.Errorf("find executable: %w", err)
 	}
 
-	cmd := fmt.Sprintf("%s present %s", executable, shellescape.Quote(location))
+	cmd, err := protocol.Parser.Marshal(executable, map[string]any{
+		"mode":     "present",
+		"location": location,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("generate command: %w", err)
+	}
+
 	session, err := common.Start(client, cmd)
 
 	if err != nil {
-		return nil, fmt.Errorf("start session: %v", err)
+		return nil, fmt.Errorf("start session: %w", err)
 	}
 
 	return &browseSession{session, location, client}, nil
@@ -59,7 +66,7 @@ func (s browseSession) ListContents() ([]common.ThinDirEntry, error) {
 
 	// List files
 	if _, err := s.Stdin.Write([]byte{protocol.ListFiles}); err != nil {
-		return nil, fmt.Errorf("send list files command: %v", err)
+		return nil, fmt.Errorf("send list files command: %w", err)
 	}
 
 	// Get output
@@ -67,7 +74,7 @@ func (s browseSession) ListContents() ([]common.ThinDirEntry, error) {
 
 	// We don't expect an EOF here, so we treat it as a normal error
 	if err != nil {
-		return nil, fmt.Errorf("read list files output: %v", err)
+		return nil, fmt.Errorf("read list files output: %w", err)
 	}
 
 	var entries []common.ThinDirEntry
@@ -82,7 +89,7 @@ func (s browseSession) ListContents() ([]common.ThinDirEntry, error) {
 		entry, err := common.DeserializeDirEntry(rawEntry)
 
 		if err != nil {
-			return nil, fmt.Errorf("deserialize dir entry: %v", err)
+			return nil, fmt.Errorf("deserialize dir entry: %w", err)
 		}
 
 		entries = append(entries, *entry)

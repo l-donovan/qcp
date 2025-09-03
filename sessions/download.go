@@ -5,14 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/protocol"
 	"github.com/l-donovan/qcp/serve"
 	"golang.org/x/crypto/ssh"
-
-	"al.essio.dev/pkg/shellescape"
 )
 
 type DownloadSession interface {
@@ -26,23 +23,23 @@ func StartDownload(client *ssh.Client, filepaths []string, compress bool) (Downl
 	executable, err := common.FindExecutable(client, "qcp")
 
 	if err != nil {
-		return nil, fmt.Errorf("find executable: %v", err)
+		return nil, fmt.Errorf("find executable: %w", err)
 	}
 
-	for i, filePath := range filepaths {
-		filepaths[i] = shellescape.Quote(filePath)
-	}
+	cmd, err := protocol.Parser.Marshal(executable, map[string]any{
+		"mode":         "serve",
+		"sources":      filepaths,
+		"uncompressed": !compress,
+	})
 
-	cmd := fmt.Sprintf("%s serve %s", executable, strings.Join(filepaths, " "))
-
-	if !compress {
-		cmd += " -u"
+	if err != nil {
+		return nil, fmt.Errorf("generate command: %w", err)
 	}
 
 	session, err := common.Start(client, cmd)
 
 	if err != nil {
-		return nil, fmt.Errorf("start session: %v", err)
+		return nil, fmt.Errorf("start session: %w", err)
 	}
 
 	return downloadSession(session), nil
@@ -52,7 +49,7 @@ func GetDownloadInfo(filename string, src io.Reader) (serve.DownloadInfo, error)
 	f := make([]byte, 1)
 
 	if _, err := src.Read(f); err != nil {
-		return serve.DownloadInfo{}, fmt.Errorf("read flags: %v", err)
+		return serve.DownloadInfo{}, fmt.Errorf("read flags: %w", err)
 	}
 
 	isDir := f[0]&protocol.IsDirectory > 0
@@ -71,7 +68,7 @@ func GetDownloadInfo(filename string, src io.Reader) (serve.DownloadInfo, error)
 		fileModeBytes := make([]byte, 4)
 
 		if _, err := src.Read(fileModeBytes); err != nil {
-			return serve.DownloadInfo{}, fmt.Errorf("read file mode: %v", err)
+			return serve.DownloadInfo{}, fmt.Errorf("read file mode: %w", err)
 		}
 
 		downloadInfo.Mode = os.FileMode(binary.LittleEndian.Uint32(fileModeBytes))
@@ -80,11 +77,11 @@ func GetDownloadInfo(filename string, src io.Reader) (serve.DownloadInfo, error)
 		fileModeBytes := make([]byte, 4)
 
 		if _, err := src.Read(fileSizeBytes); err != nil {
-			return serve.DownloadInfo{}, fmt.Errorf("read file size: %v", err)
+			return serve.DownloadInfo{}, fmt.Errorf("read file size: %w", err)
 		}
 
 		if _, err := src.Read(fileModeBytes); err != nil {
-			return serve.DownloadInfo{}, fmt.Errorf("read file mode: %v", err)
+			return serve.DownloadInfo{}, fmt.Errorf("read file mode: %w", err)
 		}
 
 		downloadInfo.Size = binary.LittleEndian.Uint32(fileSizeBytes)
@@ -107,7 +104,7 @@ func Download(client *ssh.Client, srcFilePaths []string, dstFilePath string, com
 	session, err := StartDownload(client, srcFilePaths, compress)
 
 	if err != nil {
-		return fmt.Errorf("start download: %v", err)
+		return fmt.Errorf("start download: %w", err)
 	}
 
 	defer session.Stop()
@@ -115,11 +112,11 @@ func Download(client *ssh.Client, srcFilePaths []string, dstFilePath string, com
 	downloadInfo, err := session.GetDownloadInfo(dstFilePath)
 
 	if err != nil {
-		return fmt.Errorf("get download info: %v", err)
+		return fmt.Errorf("get download info: %w", err)
 	}
 
 	if err := downloadInfo.Receive(); err != nil {
-		return fmt.Errorf("receive %v: %v", srcFilePaths, err)
+		return fmt.Errorf("receive %v: %w", srcFilePaths, err)
 	}
 
 	return nil
