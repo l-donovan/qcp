@@ -43,9 +43,7 @@ func NewShareHandler(downloadInfo serve.DownloadInfo, server *http.Server) (Shar
 }
 
 func (h ShareHandler) ServeFile(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Got download request from %s\n", r.RemoteAddr)
 	h.downloadInfo.ReceiveWeb(w)
-	fmt.Printf("Done\n")
 	go h.server.Shutdown(context.Background())
 }
 

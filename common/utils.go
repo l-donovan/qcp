@@ -42,8 +42,8 @@ func GetOutboundIP() (net.IP, error) {
 	return localAddr.IP, nil
 }
 
-func PrettifySize(size int64) string {
-	flSize := float64(size)
+func PrettifySize(sizeBytes int64) string {
+	flSize := float64(sizeBytes)
 	units := []string{"B", "kiB", "MiB", "GiB"}
 	i := 0
 
@@ -53,4 +53,17 @@ func PrettifySize(size int64) string {
 	}
 
 	return fmt.Sprintf("%.2f %s", flSize, units[i])
+}
+
+func PrettifySpeed(speedBitsPerSecond int64) string {
+	flSpeed := float64(speedBitsPerSecond)
+	units := []string{"bps", "kbps", "Mbps", "Gbps"}
+	i := 0
+
+	for flSpeed > 1000 && i < len(units)-1 {
+		flSpeed /= 1000
+		i += 1
+	}
+
+	return fmt.Sprintf("%.2f %s", flSpeed, units[i])
 }

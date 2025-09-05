@@ -281,18 +281,7 @@ func main() {
 		}
 
 		if !quiet {
-			progress := make(chan int64)
-			downloadInfo.Progress = progress
-
-			go func() {
-				for progress := range downloadInfo.Progress {
-					if progress == -1 {
-						break
-					}
-
-					fmt.Printf("Downloaded %s\n", common.PrettifySize(progress))
-				}
-			}()
+			go downloadInfo.PrintProgressBar()
 		}
 
 		ip, err := common.GetOutboundIP()

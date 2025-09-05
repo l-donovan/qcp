@@ -10,6 +10,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
+
+	"github.com/l-donovan/qcp/common"
+)
+
+const (
+	printFrequency = 8
 )
 
 type DownloadInfo struct {
@@ -220,4 +227,49 @@ func (d DownloadInfo) ReceiveWeb(w http.ResponseWriter) {
 
 		flusher.Flush()
 	}
+}
+
+func (d *DownloadInfo) PrintProgressBar() {
+	d.Progress = make(chan int64)
+
+	printPeriod := time.Duration(1000/printFrequency) * time.Millisecond
+
+	lastTime := time.Now()
+	lastProgressBytes := int64(0)
+	lastLen := 0
+
+	for progressBytes := range d.Progress {
+		timeDelta := time.Since(lastTime)
+
+		// We effectively need to lower the resolution so that we have a large
+		// enough time delta from which we can compute download speed.
+
+		if timeDelta < printPeriod {
+			continue
+		}
+
+		speedBitsPerSecond := 1_000 * 8 * (progressBytes - lastProgressBytes) / timeDelta.Milliseconds()
+
+		if lastLen == 0 {
+			fmt.Print("\033[?25lDownloaded ")
+		} else {
+			fmt.Printf("\033[%dD", lastLen)
+		}
+
+		if progressBytes == -1 {
+			break
+		}
+
+		prettySize := common.PrettifySize(progressBytes)
+		prettySpeed := common.PrettifySpeed(speedBitsPerSecond)
+
+		text := fmt.Sprintf("%s (%s)", prettySize, prettySpeed)
+		fmt.Printf("\033[K%s", text)
+
+		lastTime = time.Now()
+		lastProgressBytes = progressBytes
+		lastLen = len(text)
+	}
+
+	fmt.Println("\033[?25h")
 }
