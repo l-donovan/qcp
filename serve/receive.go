@@ -184,12 +184,12 @@ func (d DownloadInfo) ReceiveWeb(w http.ResponseWriter) {
 
 	if d.Directory {
 		w.Header().Set("Content-Disposition", "attachment;filename="+d.Filename+".tar.gz")
-		w.Header().Set("Content-Encoding", "gzip")
-	} else if d.Compressed {
-		w.Header().Set("Content-Disposition", "attachment;filename="+d.Filename)
-		w.Header().Set("Content-Encoding", "gzip")
 	} else {
 		w.Header().Set("Content-Disposition", "attachment;filename="+d.Filename)
+	}
+
+	if !d.Directory && d.Compressed {
+		w.Header().Set("Content-Encoding", "gzip")
 	}
 
 	defer func() {
