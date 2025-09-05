@@ -13,8 +13,8 @@ func init() {
 		"download": func(s *goparse.Parser) {
 			// Client mode
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
-			s.AddParameter("source", "file to download")
-			s.AddParameter("destination", "location of downloaded file")
+			s.SetListParameter("sources", "files/directories to download", 1)
+			s.AddValueFlag("destination", 'd', "location of downloaded file", "PATH", "")
 			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
 		},
 		"_serve": func(s *goparse.Parser) {
@@ -57,6 +57,7 @@ func init() {
 			s.AddValueFlag("hostname", 's', "connection string, in the format [username@]hostname[:port]", "HOST", "")
 			s.SetListParameter("sources", "files/directories to serve", 1)
 			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
+			s.AddFlag("quiet", 'q', "progress information will not be printed", false)
 		},
 	})
 }

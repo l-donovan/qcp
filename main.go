@@ -28,7 +28,7 @@ func main() {
 	switch args["mode"].(string) {
 	case "download":
 		connectionString := args["hostname"].(string)
-		srcFilePath := args["source"].(string)
+		srcFilePaths := args["sources"].([]string)
 		dstFilePath := args["destination"].(string)
 		uncompressed := args["uncompressed"].(bool)
 
@@ -50,7 +50,7 @@ func main() {
 			}
 		}()
 
-		if err := sessions.Download(remoteClient, []string{srcFilePath}, dstFilePath, !uncompressed); err != nil {
+		if err := sessions.Download(remoteClient, srcFilePaths, dstFilePath, !uncompressed); err != nil {
 			exitWithError(err)
 		}
 	case "serve":
