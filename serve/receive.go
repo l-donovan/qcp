@@ -19,6 +19,7 @@ type DownloadInfo struct {
 	Compressed bool
 	Mode       os.FileMode
 	Size       uint32
+	Progress   chan int64
 }
 
 func (d DownloadInfo) receiveDirectory() error {
@@ -177,6 +178,10 @@ func (d DownloadInfo) ReceiveWeb(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
+	if d.Size != 0 {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", d.Size))
+	}
+
 	if d.Directory {
 		w.Header().Set("Content-Disposition", "attachment;filename="+d.Filename+".tar.gz")
 		w.Header().Set("Content-Encoding", "gzip")
@@ -187,14 +192,30 @@ func (d DownloadInfo) ReceiveWeb(w http.ResponseWriter) {
 		w.Header().Set("Content-Disposition", "attachment;filename="+d.Filename)
 	}
 
+	defer func() {
+		if d.Progress != nil {
+			d.Progress <- -1
+		}
+	}()
+
+	var totalCopied int64
+
 	for {
-		if _, err := io.CopyN(w, d.Contents, 1024); err != nil {
+		n, err := io.CopyN(w, d.Contents, 1024)
+
+		if err != nil {
 			if err != io.EOF {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = fmt.Fprintf(w, "download: %v", err)
 			}
 
 			return
+		}
+
+		totalCopied += n
+
+		if d.Progress != nil {
+			d.Progress <- totalCopied
 		}
 
 		flusher.Flush()

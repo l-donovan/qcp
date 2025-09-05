@@ -198,6 +198,7 @@ func main() {
 		connectionString := args["hostname"].(string)
 		srcFilePaths := args["sources"].([]string)
 		uncompressed := args["uncompressed"].(bool)
+		quiet := args["quiet"].(bool)
 
 		filename := common.CreateIdentifier(srcFilePaths)
 
@@ -277,6 +278,21 @@ func main() {
 			}
 
 			downloadInfo = dlInfo
+		}
+
+		if !quiet {
+			progress := make(chan int64)
+			downloadInfo.Progress = progress
+
+			go func() {
+				for progress := range downloadInfo.Progress {
+					if progress == -1 {
+						break
+					}
+
+					fmt.Printf("Downloaded %s\n", common.PrettifySize(progress))
+				}
+			}()
 		}
 
 		ip, err := common.GetOutboundIP()
