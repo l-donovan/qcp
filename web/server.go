@@ -221,13 +221,13 @@ func createClient(request RequestConnection) (*ssh.Client, error) {
 	info, err := common.ParseConnectionString(request.Hostname)
 
 	if err != nil {
-		return nil, fmt.Errorf("parse connection string: %v", err)
+		return nil, fmt.Errorf("parse connection string: %w", err)
 	}
 
 	remoteClient, err := common.CreateClient(*info)
 
 	if err != nil {
-		return nil, fmt.Errorf("create client: %v", err)
+		return nil, fmt.Errorf("create client: %w", err)
 	}
 
 	return remoteClient, nil

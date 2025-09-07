@@ -260,7 +260,7 @@ func (m pickSession) GetFiles() ([]list.Item, error) {
 	contents, err := m.browseSession.ListContents()
 
 	if err != nil {
-		return nil, fmt.Errorf("list contents: %v", err)
+		return nil, fmt.Errorf("list contents: %w", err)
 	}
 
 	entries := make([]list.Item, len(contents))
@@ -285,11 +285,11 @@ func (m pickSession) SelectFile(entry common.ThinDirEntry) error {
 	downloadInfo, err := downloadSession.GetDownloadInfo(entry.Name)
 
 	if err != nil {
-		return fmt.Errorf("select file: %v", err)
+		return fmt.Errorf("select file: %w", err)
 	}
 
 	if err := downloadInfo.Receive(); err != nil {
-		return fmt.Errorf("receive %s: %v", entry.Name, err)
+		return fmt.Errorf("receive %s: %w", entry.Name, err)
 	}
 
 	return nil

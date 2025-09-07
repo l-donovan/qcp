@@ -147,13 +147,13 @@ func FindExecutable(client *ssh.Client, name string) (string, error) {
 	session, err := client.NewSession()
 
 	if err != nil {
-		return "", fmt.Errorf("create session: %v", err)
+		return "", fmt.Errorf("create session: %w", err)
 	}
 
 	out, err := session.Output(fmt.Sprintf("$SHELL -l -c 'which %s'", name))
 
 	if err != nil {
-		return "", fmt.Errorf("which %s: %v", name, err)
+		return "", fmt.Errorf("which %s: %w", name, err)
 	}
 
 	return strings.TrimSpace(string(out)), nil
@@ -191,29 +191,29 @@ func Start(client *ssh.Client, cmd string) (Session, error) {
 	session, err := client.NewSession()
 
 	if err != nil {
-		return Session{}, fmt.Errorf("create session: %v", err)
+		return Session{}, fmt.Errorf("create session: %w", err)
 	}
 
 	stdin, err := session.StdinPipe()
 
 	if err != nil {
-		return Session{}, fmt.Errorf("get stdin pipe: %v", err)
+		return Session{}, fmt.Errorf("get stdin pipe: %w", err)
 	}
 
 	stdout, err := session.StdoutPipe()
 
 	if err != nil {
-		return Session{}, fmt.Errorf("get stdout pipe: %v", err)
+		return Session{}, fmt.Errorf("get stdout pipe: %w", err)
 	}
 
 	stderr, err := session.StderrPipe()
 
 	if err != nil {
-		return Session{}, fmt.Errorf("get stderr pipe: %v", err)
+		return Session{}, fmt.Errorf("get stderr pipe: %w", err)
 	}
 
 	if err := session.Start(cmd); err != nil {
-		return Session{}, fmt.Errorf("start command: %v", err)
+		return Session{}, fmt.Errorf("start command: %w", err)
 	}
 
 	return Session{session, stdin, stdout, stderr}, nil
@@ -223,7 +223,7 @@ func RunWithPipes(client *ssh.Client, cmd string, handle RunHandler) error {
 	session, err := Start(client, cmd)
 
 	if err != nil {
-		return fmt.Errorf("start session: %v", err)
+		return fmt.Errorf("start session: %w", err)
 	}
 
 	defer func() {
@@ -235,16 +235,16 @@ func RunWithPipes(client *ssh.Client, cmd string, handle RunHandler) error {
 	go logErrors(session.Stderr)
 
 	if err := handle(session.Stdin, session.Stdout, session.Stderr); err != nil {
-		return fmt.Errorf("run handler: %v", err)
+		return fmt.Errorf("run handler: %w", err)
 	}
 
 	// We also check for EOF in case `handle` already closed stdin
 	if err := session.Stdin.Close(); err != nil && err != io.EOF {
-		return fmt.Errorf("close stdin: %v", err)
+		return fmt.Errorf("close stdin: %w", err)
 	}
 
 	if err := session.Session.Wait(); err != nil {
-		return fmt.Errorf("wait for command: %v", err)
+		return fmt.Errorf("wait for command: %w", err)
 	}
 
 	return nil

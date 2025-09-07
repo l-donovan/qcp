@@ -33,7 +33,7 @@ func (d DownloadInfo) receiveDirectory() error {
 	gzipReader, err := gzip.NewReader(d.Contents)
 
 	if err != nil {
-		return fmt.Errorf("create gzip reader: %v", err)
+		return fmt.Errorf("create gzip reader: %w", err)
 	}
 
 	tarReader := tar.NewReader(gzipReader)
@@ -47,7 +47,7 @@ func (d DownloadInfo) receiveDirectory() error {
 				return nil
 			}
 
-			return fmt.Errorf("read tar: %v", err)
+			return fmt.Errorf("read tar: %w", err)
 		}
 
 		filePath := path.Join(d.Filename, header.Name)
@@ -57,35 +57,35 @@ func (d DownloadInfo) receiveDirectory() error {
 			fmt.Printf("Creating directory %s\n", filePath)
 
 			if err := os.MkdirAll(filePath, 0o777); err != nil {
-				return fmt.Errorf("create directory %s: %v", filePath, err)
+				return fmt.Errorf("create directory %s: %w", filePath, err)
 			}
 		} else {
 			fmt.Printf("Receiving %s\n", filePath)
 
 			if err := os.MkdirAll(filepath.Dir(filePath), 0o775); err != nil {
-				return fmt.Errorf("create directory %s: %v", filepath.Dir(filePath), err)
+				return fmt.Errorf("create directory %s: %w", filepath.Dir(filePath), err)
 			}
 
 			fp, err := os.Create(filePath)
 
 			if err != nil {
-				return fmt.Errorf("create %s: %v", filePath, err)
+				return fmt.Errorf("create %s: %w", filePath, err)
 			}
 
 			if err := fp.Truncate(fileInfo.Size()); err != nil {
-				return fmt.Errorf("set file size: %v", err)
+				return fmt.Errorf("set file size: %w", err)
 			}
 
 			if _, err := io.Copy(fp, tarReader); err != nil {
-				return fmt.Errorf("write %s: %v", filePath, err)
+				return fmt.Errorf("write %s: %w", filePath, err)
 			}
 
 			if err := fp.Chmod(fileInfo.Mode()); err != nil {
-				return fmt.Errorf("change filemode: %v", err)
+				return fmt.Errorf("change filemode: %w", err)
 			}
 
 			if err := fp.Close(); err != nil {
-				return fmt.Errorf("close file %s: %v", filePath, err)
+				return fmt.Errorf("close file %s: %w", filePath, err)
 			}
 		}
 	}
@@ -95,13 +95,13 @@ func (d DownloadInfo) receiveFileCompressed() error {
 	gzipReader, err := gzip.NewReader(d.Contents)
 
 	if err != nil {
-		return fmt.Errorf("create gzip reader: %v", err)
+		return fmt.Errorf("create gzip reader: %w", err)
 	}
 
 	fp, err := os.Create(d.Filename)
 
 	if err != nil {
-		return fmt.Errorf("create file: %v", err)
+		return fmt.Errorf("create file: %w", err)
 	}
 
 	defer func() {
@@ -111,11 +111,11 @@ func (d DownloadInfo) receiveFileCompressed() error {
 	}()
 
 	if _, err := io.Copy(fp, gzipReader); err != nil {
-		return fmt.Errorf("copy to destination file: %v", err)
+		return fmt.Errorf("copy to destination file: %w", err)
 	}
 
 	if err := fp.Chmod(d.Mode); err != nil {
-		return fmt.Errorf("set destination file permissions: %v", err)
+		return fmt.Errorf("set destination file permissions: %w", err)
 	}
 
 	return nil
@@ -125,7 +125,7 @@ func (d DownloadInfo) receiveFileUncompressed() error {
 	fp, err := os.Create(d.Filename)
 
 	if err != nil {
-		return fmt.Errorf("create file: %v", err)
+		return fmt.Errorf("create file: %w", err)
 	}
 
 	defer func() {
@@ -135,15 +135,15 @@ func (d DownloadInfo) receiveFileUncompressed() error {
 	}()
 
 	if err := fp.Truncate(int64(d.Size)); err != nil {
-		return fmt.Errorf("set file size: %v", err)
+		return fmt.Errorf("set file size: %w", err)
 	}
 
 	if _, err := io.Copy(fp, d.Contents); err != nil {
-		return fmt.Errorf("copy to destination file: %v", err)
+		return fmt.Errorf("copy to destination file: %w", err)
 	}
 
 	if err := fp.Chmod(d.Mode); err != nil {
-		return fmt.Errorf("set destination file permissions: %v", err)
+		return fmt.Errorf("set destination file permissions: %w", err)
 	}
 
 	return nil
@@ -194,6 +194,10 @@ func (d DownloadInfo) ReceiveWeb(w http.ResponseWriter) {
 	} else {
 		w.Header().Set("Content-Disposition", "attachment;filename="+d.Filename)
 	}
+
+	// We don't set Content-Encoding: gzip for directories even though they are
+	// sent as tar.gz files, because we don't want the browser to prematurely decompress
+	// the archive.
 
 	if !d.Directory && d.Compressed {
 		w.Header().Set("Content-Encoding", "gzip")
@@ -251,7 +255,7 @@ func (d *DownloadInfo) PrintProgressBar() {
 		speedBitsPerSecond := 1_000 * 8 * (progressBytes - lastProgressBytes) / timeDelta.Milliseconds()
 
 		if lastLen == 0 {
-			fmt.Print("\033[?25lDownloaded ")
+			fmt.Print("\033[?25lTransferred ")
 		} else {
 			fmt.Printf("\033[%dD", lastLen)
 		}

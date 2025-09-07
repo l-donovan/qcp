@@ -32,7 +32,7 @@ func addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 	fp, err := os.Open(filePath)
 
 	if err != nil {
-		return fmt.Errorf("open file: %v", err)
+		return fmt.Errorf("open file: %w", err)
 	}
 
 	defer func() {
@@ -84,7 +84,7 @@ type UploadInfo struct {
 // The directory is added to a tar archive and compressed with gzip.
 func (u UploadInfo) serveDirectory() error {
 	if _, err := u.Destination.Write([]byte{protocol.IsDirectory}); err != nil {
-		return fmt.Errorf("write flags: %v", err)
+		return fmt.Errorf("write flags: %w", err)
 	}
 
 	gzipWriter := gzip.NewWriter(u.Destination)
@@ -128,7 +128,7 @@ func (u UploadInfo) serveFileCompressed() error {
 	fp, err := os.Open(u.Filenames[0])
 
 	if err != nil {
-		return fmt.Errorf("open source file: %v", err)
+		return fmt.Errorf("open source file: %w", err)
 	}
 
 	defer func() {
@@ -140,12 +140,12 @@ func (u UploadInfo) serveFileCompressed() error {
 	fileInfo, err := fp.Stat()
 
 	if err != nil {
-		return fmt.Errorf("stat file: %v", err)
+		return fmt.Errorf("stat file: %w", err)
 	}
 
 	// One uint32 containing flags.
 	if _, err := u.Destination.Write([]byte{protocol.IsCompressed}); err != nil {
-		return fmt.Errorf("write flags: %v", err)
+		return fmt.Errorf("write flags: %w", err)
 	}
 
 	// One uint32 containing the file mode.
@@ -153,7 +153,7 @@ func (u UploadInfo) serveFileCompressed() error {
 	binary.LittleEndian.PutUint32(fileModeBytes, fileMode)
 
 	if _, err := u.Destination.Write(fileModeBytes); err != nil {
-		return fmt.Errorf("write file mode: %v", err)
+		return fmt.Errorf("write file mode: %w", err)
 	}
 
 	gzipWriter := gzip.NewWriter(u.Destination)
@@ -166,7 +166,7 @@ func (u UploadInfo) serveFileCompressed() error {
 
 	// The file contents.
 	if _, err := io.Copy(gzipWriter, fp); err != nil {
-		return fmt.Errorf("copy source file: %v", err)
+		return fmt.Errorf("copy source file: %w", err)
 	}
 
 	return nil
@@ -179,7 +179,7 @@ func (u UploadInfo) serveFileUncompressed() error {
 	fp, err := os.Open(u.Filenames[0])
 
 	if err != nil {
-		return fmt.Errorf("open file for reading: %v", err)
+		return fmt.Errorf("open file for reading: %w", err)
 	}
 
 	defer func() {
@@ -191,12 +191,12 @@ func (u UploadInfo) serveFileUncompressed() error {
 	fileInfo, err := fp.Stat()
 
 	if err != nil {
-		return fmt.Errorf("stat file: %v", err)
+		return fmt.Errorf("stat file: %w", err)
 	}
 
 	// One uint32 containing flags.
 	if _, err := u.Destination.Write([]byte{0}); err != nil {
-		return fmt.Errorf("write flags: %v", err)
+		return fmt.Errorf("write flags: %w", err)
 	}
 
 	// One uint32 containing the file size.
@@ -204,7 +204,7 @@ func (u UploadInfo) serveFileUncompressed() error {
 	binary.LittleEndian.PutUint32(fileSizeBytes, fileSize)
 
 	if _, err := u.Destination.Write(fileSizeBytes); err != nil {
-		return fmt.Errorf("write file size: %v", err)
+		return fmt.Errorf("write file size: %w", err)
 	}
 
 	// One uint32 containing the file mode.
@@ -212,7 +212,7 @@ func (u UploadInfo) serveFileUncompressed() error {
 	binary.LittleEndian.PutUint32(fileModeBytes, fileMode)
 
 	if _, err := u.Destination.Write(fileModeBytes); err != nil {
-		return fmt.Errorf("write file mode: %v", err)
+		return fmt.Errorf("write file mode: %w", err)
 	}
 
 	// The file contents.
@@ -225,7 +225,7 @@ func (u UploadInfo) serveFileUncompressed() error {
 
 func (u UploadInfo) serveMultipleFiles() error {
 	if _, err := u.Destination.Write([]byte{protocol.IsDirectory}); err != nil {
-		return fmt.Errorf("write flags: %v", err)
+		return fmt.Errorf("write flags: %w", err)
 	}
 
 	gzipWriter := gzip.NewWriter(u.Destination)

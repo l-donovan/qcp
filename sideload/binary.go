@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -106,25 +107,25 @@ func GetBinary(client *ssh.Client, release, location string) error {
 	hostOs, err := getOs(client)
 
 	if err != nil {
-		return fmt.Errorf("get OS: %v", err)
+		return fmt.Errorf("get OS: %w", err)
 	}
 
 	hostArch, err := getArch(client)
 
 	if err != nil {
-		return fmt.Errorf("get arch: %v", err)
+		return fmt.Errorf("get arch: %w", err)
 	}
 
 	url, err := getBinaryUrl(release, hostOs, hostArch)
 
 	if err != nil {
-		return fmt.Errorf("get qcp binary URL: %v", err)
+		return fmt.Errorf("get qcp binary URL: %w", err)
 	}
 
 	resp, err := http.Get(url)
 
 	if err != nil {
-		return fmt.Errorf("get binary: %v", err)
+		return fmt.Errorf("get binary: %w", err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -140,7 +141,7 @@ func GetBinary(client *ssh.Client, release, location string) error {
 	gzipReader, err := gzip.NewReader(resp.Body)
 
 	if err != nil {
-		return fmt.Errorf("create gzip reader: %v", err)
+		return fmt.Errorf("create gzip reader: %w", err)
 	}
 
 	tarReader := tar.NewReader(gzipReader)
@@ -153,7 +154,7 @@ func GetBinary(client *ssh.Client, release, location string) error {
 		}
 
 		if err != nil {
-			return fmt.Errorf("read next item in tarball: %v", err)
+			return fmt.Errorf("read next item in tarball: %w", err)
 		}
 
 		if header.Name == "qcp" {
@@ -163,5 +164,5 @@ func GetBinary(client *ssh.Client, release, location string) error {
 		_, _ = io.Copy(io.Discard, tarReader)
 	}
 
-	return fmt.Errorf("could not find file matching qcp in downloaded tarball")
+	return errors.New("could not find file matching qcp in downloaded tarball")
 }
