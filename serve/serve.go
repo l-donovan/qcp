@@ -78,6 +78,7 @@ type UploadInfo struct {
 	Destination io.WriteCloser
 	Directory   bool
 	Compressed  bool
+	Offset      int64
 }
 
 // serveDirectory sends a directory via stdout and a simple wire protocol.
@@ -122,13 +123,51 @@ func (u UploadInfo) serveDirectory() error {
 	return nil
 }
 
-func (u UploadInfo) serveFileCompressed() error {
+func (u UploadInfo) writeFileHeader(flags byte) (*os.File, error) {
+	fileSizeBytes := make([]byte, 4)
 	fileModeBytes := make([]byte, 4)
 
 	fp, err := os.Open(u.Filenames[0])
 
 	if err != nil {
-		return fmt.Errorf("open source file: %w", err)
+		return nil, fmt.Errorf("open source file: %w", err)
+	}
+
+	fileInfo, err := fp.Stat()
+
+	if err != nil {
+		return nil, fmt.Errorf("stat file: %w", err)
+	}
+
+	// One Byte containing flags.
+	if _, err := u.Destination.Write([]byte{flags}); err != nil {
+		return nil, fmt.Errorf("write flags: %w", err)
+	}
+
+	// One uint32 containing the file size.
+	fileSize := uint32(fileInfo.Size())
+	binary.LittleEndian.PutUint32(fileSizeBytes, fileSize)
+
+	if _, err := u.Destination.Write(fileSizeBytes); err != nil {
+		return nil, fmt.Errorf("write file size: %w", err)
+	}
+
+	// One uint32 containing the file mode.
+	fileMode := uint32(fileInfo.Mode())
+	binary.LittleEndian.PutUint32(fileModeBytes, fileMode)
+
+	if _, err := u.Destination.Write(fileModeBytes); err != nil {
+		return nil, fmt.Errorf("write file mode: %w", err)
+	}
+
+	return fp, nil
+}
+
+func (u UploadInfo) serveFileCompressed() error {
+	fp, err := u.writeFileHeader(protocol.IsCompressed)
+
+	if err != nil {
+		return fmt.Errorf("write file header: %w", err)
 	}
 
 	defer func() {
@@ -137,23 +176,8 @@ func (u UploadInfo) serveFileCompressed() error {
 		}
 	}()
 
-	fileInfo, err := fp.Stat()
-
-	if err != nil {
-		return fmt.Errorf("stat file: %w", err)
-	}
-
-	// One uint32 containing flags.
-	if _, err := u.Destination.Write([]byte{protocol.IsCompressed}); err != nil {
-		return fmt.Errorf("write flags: %w", err)
-	}
-
-	// One uint32 containing the file mode.
-	fileMode := uint32(fileInfo.Mode())
-	binary.LittleEndian.PutUint32(fileModeBytes, fileMode)
-
-	if _, err := u.Destination.Write(fileModeBytes); err != nil {
-		return fmt.Errorf("write file mode: %w", err)
+	if _, err := fp.Seek(u.Offset, io.SeekStart); err != nil {
+		return fmt.Errorf("seek in file: %w", err)
 	}
 
 	gzipWriter := gzip.NewWriter(u.Destination)
@@ -173,13 +197,10 @@ func (u UploadInfo) serveFileCompressed() error {
 }
 
 func (u UploadInfo) serveFileUncompressed() error {
-	fileSizeBytes := make([]byte, 4)
-	fileModeBytes := make([]byte, 4)
-
-	fp, err := os.Open(u.Filenames[0])
+	fp, err := u.writeFileHeader(0)
 
 	if err != nil {
-		return fmt.Errorf("open file for reading: %w", err)
+		return fmt.Errorf("write file header: %w", err)
 	}
 
 	defer func() {
@@ -188,36 +209,13 @@ func (u UploadInfo) serveFileUncompressed() error {
 		}
 	}()
 
-	fileInfo, err := fp.Stat()
-
-	if err != nil {
-		return fmt.Errorf("stat file: %w", err)
-	}
-
-	// One uint32 containing flags.
-	if _, err := u.Destination.Write([]byte{0}); err != nil {
-		return fmt.Errorf("write flags: %w", err)
-	}
-
-	// One uint32 containing the file size.
-	fileSize := uint32(fileInfo.Size())
-	binary.LittleEndian.PutUint32(fileSizeBytes, fileSize)
-
-	if _, err := u.Destination.Write(fileSizeBytes); err != nil {
-		return fmt.Errorf("write file size: %w", err)
-	}
-
-	// One uint32 containing the file mode.
-	fileMode := uint32(fileInfo.Mode())
-	binary.LittleEndian.PutUint32(fileModeBytes, fileMode)
-
-	if _, err := u.Destination.Write(fileModeBytes); err != nil {
-		return fmt.Errorf("write file mode: %w", err)
+	if _, err := fp.Seek(u.Offset, io.SeekStart); err != nil {
+		return fmt.Errorf("seek in file: %w", err)
 	}
 
 	// The file contents.
 	if _, err := io.Copy(u.Destination, fp); err != nil {
-		return err
+		return fmt.Errorf("copy source file: %w", err)
 	}
 
 	return nil

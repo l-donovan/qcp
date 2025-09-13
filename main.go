@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/protocol"
@@ -56,6 +57,13 @@ func main() {
 	case "serve":
 		srcFilePaths := args["sources"].([]string)
 		uncompressed := args["uncompressed"].(bool)
+		offsetStr := args["offset"].(string)
+
+		offset, err := strconv.ParseInt(offsetStr, 10, 64)
+
+		if err != nil {
+			exitWithError(err)
+		}
 
 		fileInfo, err := os.Stat(srcFilePaths[0])
 
@@ -70,6 +78,7 @@ func main() {
 			// These values may be irrelevant, depending on the input.
 			Directory:  fileInfo.IsDir(),
 			Compressed: !uncompressed,
+			Offset:     offset,
 		}
 
 		if err := uploadInfo.Serve(); err != nil {
@@ -263,7 +272,7 @@ func main() {
 				}
 			}()
 
-			downloadSession, err := sessions.StartDownload(remoteClient, srcFilePaths, !uncompressed)
+			downloadSession, err := sessions.StartDownload(remoteClient, srcFilePaths, !uncompressed, 0)
 
 			if err != nil {
 				exitWithError(err)

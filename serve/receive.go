@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"os"
@@ -29,6 +30,57 @@ type DownloadInfo struct {
 	Progress   chan int64
 }
 
+func receiveTarEntry(fileInfo fs.FileInfo, filePath string, src *tar.Reader) error {
+	if fileInfo.IsDir() {
+		fmt.Printf("Creating directory %s\n", filePath)
+
+		if err := os.MkdirAll(filePath, 0o777); err != nil {
+			return fmt.Errorf("create directory %s: %w", filePath, err)
+		}
+	} else {
+		fmt.Printf("Receiving %s\n", filePath)
+
+		if err := os.MkdirAll(filepath.Dir(filePath), 0o775); err != nil {
+			return fmt.Errorf("create directory %s: %w", filepath.Dir(filePath), err)
+		}
+
+		fp, err := os.Create(filePath)
+
+		if err != nil {
+			return fmt.Errorf("create %s: %w", filePath, err)
+		}
+
+		defer func() {
+			// Close returns an error if the file pointer has already been closed.
+			// Under normal operation we expect the file to be closed before we
+			// get here, so we ignore the potential error.
+
+			_ = fp.Close()
+		}()
+
+		if err := fp.Truncate(fileInfo.Size()); err != nil {
+			return fmt.Errorf("set file size: %w", err)
+		}
+
+		if err := fp.Chmod(fileInfo.Mode()); err != nil {
+			return fmt.Errorf("change filemode: %w", err)
+		}
+
+		if _, err := io.Copy(fp, src); err != nil {
+			return fmt.Errorf("write %s: %w", filePath, err)
+		}
+
+		// Unlike in the deferred function above, we do NOT expect Close to
+		// return an error at this point.
+
+		if err := fp.Close(); err != nil {
+			return fmt.Errorf("close file %s: %w", filePath, err)
+		}
+	}
+
+	return nil
+}
+
 func (d DownloadInfo) receiveDirectory() error {
 	gzipReader, err := gzip.NewReader(d.Contents)
 
@@ -43,7 +95,7 @@ func (d DownloadInfo) receiveDirectory() error {
 
 		if err != nil {
 			if err == io.EOF {
-				fmt.Print("All files received\n")
+				fmt.Println("All files received")
 				return nil
 			}
 
@@ -53,97 +105,54 @@ func (d DownloadInfo) receiveDirectory() error {
 		filePath := path.Join(d.Filename, header.Name)
 		fileInfo := header.FileInfo()
 
-		if fileInfo.IsDir() {
-			fmt.Printf("Creating directory %s\n", filePath)
-
-			if err := os.MkdirAll(filePath, 0o777); err != nil {
-				return fmt.Errorf("create directory %s: %w", filePath, err)
-			}
-		} else {
-			fmt.Printf("Receiving %s\n", filePath)
-
-			if err := os.MkdirAll(filepath.Dir(filePath), 0o775); err != nil {
-				return fmt.Errorf("create directory %s: %w", filepath.Dir(filePath), err)
-			}
-
-			fp, err := os.Create(filePath)
-
-			if err != nil {
-				return fmt.Errorf("create %s: %w", filePath, err)
-			}
-
-			if err := fp.Truncate(fileInfo.Size()); err != nil {
-				return fmt.Errorf("set file size: %w", err)
-			}
-
-			if _, err := io.Copy(fp, tarReader); err != nil {
-				return fmt.Errorf("write %s: %w", filePath, err)
-			}
-
-			if err := fp.Chmod(fileInfo.Mode()); err != nil {
-				return fmt.Errorf("change filemode: %w", err)
-			}
-
-			if err := fp.Close(); err != nil {
-				return fmt.Errorf("close file %s: %w", filePath, err)
-			}
+		if err := receiveTarEntry(fileInfo, filePath, tarReader); err != nil {
+			return fmt.Errorf("receive tar entry: %v", err)
 		}
 	}
 }
 
-func (d DownloadInfo) receiveFileCompressed() error {
-	gzipReader, err := gzip.NewReader(d.Contents)
+func (d DownloadInfo) receiveFile() error {
+	var src io.Reader = d.Contents
 
-	if err != nil {
-		return fmt.Errorf("create gzip reader: %w", err)
+	if d.Compressed {
+		gzipReader, err := gzip.NewReader(d.Contents)
+
+		if err != nil {
+			return fmt.Errorf("create gzip reader: %w", err)
+		}
+
+		src = gzipReader
 	}
 
-	fp, err := os.Create(d.Filename)
+	partialFilename := d.Filename + ".partial"
+
+	fp, err := os.OpenFile(partialFilename, os.O_APPEND|os.O_CREATE, 0o666)
 
 	if err != nil {
-		return fmt.Errorf("create file: %w", err)
+		return fmt.Errorf("open partial file: %w", err)
 	}
 
 	defer func() {
-		if err := fp.Close(); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error closing file: %v\n", err)
-		}
+		_ = fp.Close()
 	}()
 
-	if _, err := io.Copy(fp, gzipReader); err != nil {
-		return fmt.Errorf("copy to destination file: %w", err)
-	}
+	// TODO: Truncate is (hopefully temporarily) disabled.
+	// I was running into some strange access denied issues.
 
 	if err := fp.Chmod(d.Mode); err != nil {
 		return fmt.Errorf("set destination file permissions: %w", err)
 	}
 
-	return nil
-}
-
-func (d DownloadInfo) receiveFileUncompressed() error {
-	fp, err := os.Create(d.Filename)
-
-	if err != nil {
-		return fmt.Errorf("create file: %w", err)
-	}
-
-	defer func() {
-		if err := fp.Close(); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error closing file: %v\n", err)
-		}
-	}()
-
-	if err := fp.Truncate(int64(d.Size)); err != nil {
-		return fmt.Errorf("set file size: %w", err)
-	}
-
-	if _, err := io.Copy(fp, d.Contents); err != nil {
+	if _, err := io.Copy(fp, src); err != nil {
 		return fmt.Errorf("copy to destination file: %w", err)
 	}
 
-	if err := fp.Chmod(d.Mode); err != nil {
-		return fmt.Errorf("set destination file permissions: %w", err)
+	if err := fp.Close(); err != nil {
+		return fmt.Errorf("close partial file: %w", err)
+	}
+
+	if err := os.Rename(partialFilename, d.Filename); err != nil {
+		return fmt.Errorf("rename partial file: %w", err)
 	}
 
 	return nil
@@ -152,12 +161,11 @@ func (d DownloadInfo) receiveFileUncompressed() error {
 func (d DownloadInfo) Receive() error {
 	// There's no special handling required for receiving multiple files, as they'll always
 	// arrive as a compressed directory.
+
 	if d.Directory {
 		return d.receiveDirectory()
-	} else if d.Compressed {
-		return d.receiveFileCompressed()
 	} else {
-		return d.receiveFileUncompressed()
+		return d.receiveFile()
 	}
 }
 

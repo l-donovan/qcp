@@ -165,7 +165,7 @@ func (h Handler) ServeSession(w http.ResponseWriter, r *http.Request) {
 				fmt.Printf("Downloading %s\n", strings.Join(filepaths, ", "))
 
 				// TODO: We want compression parameterized.
-				downloadSession, err := sessions.StartDownload(client, filepaths, true)
+				downloadSession, err := sessions.StartDownload(client, filepaths, true, 0)
 
 				if err != nil {
 					return []byte(err.Error())

@@ -101,7 +101,7 @@ func (s browseSession) ListContents() ([]common.ThinDirEntry, error) {
 func (s browseSession) DownloadFile(name string, compress bool) (DownloadSession, error) {
 	srcFilePath := filepath.Join(s.path, name)
 
-	return StartDownload(s.client, []string{srcFilePath}, compress)
+	return StartDownload(s.client, []string{srcFilePath}, compress, 0)
 }
 
 func (s browseSession) Stop() {

@@ -21,6 +21,7 @@ func init() {
 			// Server mode (hidden)
 			s.SetListParameter("sources", "files/directories to serve", 1)
 			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
+			s.AddValueFlag("offset", 'o', "offset from which to begin serving the file, used for resuming partial downloads", "offset", "0")
 		},
 		"upload": func(s *goparse.Parser) {
 			// Client mode
