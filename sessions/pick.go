@@ -273,8 +273,7 @@ func (m pickSession) GetFiles() ([]list.Item, error) {
 }
 
 func (m pickSession) SelectFile(entry common.ThinDirEntry) error {
-	// TODO: Parameterize `compress`.
-	downloadSession, err := m.browseSession.DownloadFile(entry.Name, true)
+	downloadSession, err := m.browseSession.DownloadFile(entry.Name)
 
 	if err != nil {
 		return fmt.Errorf("start download %s: %v", entry.Name, err)
@@ -288,7 +287,7 @@ func (m pickSession) SelectFile(entry common.ThinDirEntry) error {
 		return fmt.Errorf("select file: %w", err)
 	}
 
-	if err := downloadInfo.Receive(); err != nil {
+	if err := downloadInfo.Receive(nil); err != nil {
 		return fmt.Errorf("receive %s: %w", entry.Name, err)
 	}
 

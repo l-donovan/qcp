@@ -2,8 +2,6 @@ package sessions
 
 import (
 	"fmt"
-	"io"
-	"os"
 
 	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/protocol"
@@ -12,7 +10,7 @@ import (
 )
 
 type UploadSession interface {
-	GetUploadInfo(filename string, compress bool) (serve.UploadInfo, error)
+	GetUploadInfo(filename string) serve.UploadInfo
 	Wait()
 }
 
@@ -43,32 +41,11 @@ func StartUpload(client *ssh.Client, filepath string) (UploadSession, error) {
 	return uploadSession(session), nil
 }
 
-func GetUploadInfo(filename string, compress bool, dst io.WriteCloser) (serve.UploadInfo, error) {
-	fileInfo, err := os.Stat(filename)
-
-	if err != nil {
-		return serve.UploadInfo{}, err
+func (s uploadSession) GetUploadInfo(filename string) serve.UploadInfo {
+	return serve.UploadInfo{
+		Filenames:   []string{filename},
+		Destination: s.Stdin,
 	}
-
-	if fileInfo.IsDir() {
-		return serve.UploadInfo{
-			Filenames:   []string{filename},
-			Destination: dst,
-			Directory:   true,
-			Compressed:  true,
-		}, nil
-	} else {
-		return serve.UploadInfo{
-			Filenames:   []string{filename},
-			Destination: dst,
-			Directory:   false,
-			Compressed:  compress,
-		}, nil
-	}
-}
-
-func (s uploadSession) GetUploadInfo(filename string, compress bool) (serve.UploadInfo, error) {
-	return GetUploadInfo(filename, compress, s.Stdin)
 }
 
 func (s uploadSession) Wait() {
@@ -76,7 +53,7 @@ func (s uploadSession) Wait() {
 	s.Session.Wait()
 }
 
-func Upload(client *ssh.Client, srcFilePath, dstFilePath string, compress bool) error {
+func Upload(client *ssh.Client, srcFilePath, dstFilePath string) error {
 	session, err := StartUpload(client, dstFilePath)
 
 	if err != nil {
@@ -85,11 +62,7 @@ func Upload(client *ssh.Client, srcFilePath, dstFilePath string, compress bool) 
 
 	defer session.Wait()
 
-	uploadInfo, err := session.GetUploadInfo(srcFilePath, compress)
-
-	if err != nil {
-		return fmt.Errorf("get upload info: %w", err)
-	}
+	uploadInfo := session.GetUploadInfo(srcFilePath)
 
 	if err := uploadInfo.Serve(); err != nil {
 		return fmt.Errorf("serve %s: %w", srcFilePath, err)

@@ -52,6 +52,10 @@ func PrettifySize(sizeBytes int64) string {
 		i += 1
 	}
 
+	if i == 0 {
+		return fmt.Sprintf("%d %s", sizeBytes, units[0])
+	}
+
 	return fmt.Sprintf("%.2f %s", flSize, units[i])
 }
 
@@ -63,6 +67,10 @@ func PrettifySpeed(speedBitsPerSecond int64) string {
 	for flSpeed > 1000 && i < len(units)-1 {
 		flSpeed /= 1000
 		i += 1
+	}
+
+	if i == 0 {
+		return fmt.Sprintf("%d %s", speedBitsPerSecond, units[0])
 	}
 
 	return fmt.Sprintf("%.2f %s", flSpeed, units[i])

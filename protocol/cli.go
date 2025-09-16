@@ -15,20 +15,18 @@ func init() {
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.SetListParameter("sources", "files/directories to download", 1)
 			s.AddValueFlag("destination", 'd', "location of downloaded file", "PATH", "")
-			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
 		},
 		"_serve": func(s *goparse.Parser) {
 			// Server mode (hidden)
 			s.SetListParameter("sources", "files/directories to serve", 1)
-			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
-			s.AddValueFlag("offset", 'o', "offset from which to begin serving the file, used for resuming partial downloads", "offset", "0")
+			s.AddValueFlag("offset-file", 'o', "file from which to begin serving, used for resuming partial downloads", "file", "")
+			s.AddValueFlag("offset-pos", 'o', "offset from which to begin serving in the file, used for resuming partial downloads", "pos", "0")
 		},
 		"upload": func(s *goparse.Parser) {
 			// Client mode
 			s.AddParameter("source", "file to upload")
 			s.AddParameter("hostname", "connection string, in the format [username@]hostname[:port]")
 			s.AddParameter("destination", "location of uploaded file")
-			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
 		},
 		"_receive": func(s *goparse.Parser) {
 			// Server mode (hidden)
@@ -57,7 +55,6 @@ func init() {
 			// Link sharing mode
 			s.AddValueFlag("hostname", 's', "connection string, in the format [username@]hostname[:port]", "HOST", "")
 			s.SetListParameter("sources", "files/directories to serve", 1)
-			s.AddFlag("uncompressed", 'u', "source should be uncompressed (parameter has no effect for directory sources)", false)
 			s.AddFlag("quiet", 'q', "progress information will not be printed", false)
 		},
 	})

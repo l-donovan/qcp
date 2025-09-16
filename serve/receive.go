@@ -21,13 +21,11 @@ const (
 )
 
 type DownloadInfo struct {
-	Filename   string
-	Contents   io.Reader
-	Directory  bool
-	Compressed bool
-	Mode       os.FileMode
-	Size       uint32
-	Progress   chan int64
+	Filename     string
+	Contents     io.Reader
+	ShouldUnpack bool
+	Mode         os.FileMode
+	Progress     chan int64
 }
 
 func receiveTarEntry(fileInfo fs.FileInfo, filePath string, src *tar.Reader) error {
@@ -44,11 +42,13 @@ func receiveTarEntry(fileInfo fs.FileInfo, filePath string, src *tar.Reader) err
 			return fmt.Errorf("create directory %s: %w", filepath.Dir(filePath), err)
 		}
 
-		fp, err := os.Create(filePath)
+		fp, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o666)
 
 		if err != nil {
 			return fmt.Errorf("create %s: %w", filePath, err)
 		}
+
+		var dest io.Writer = fp
 
 		defer func() {
 			// Close returns an error if the file pointer has already been closed.
@@ -58,30 +58,45 @@ func receiveTarEntry(fileInfo fs.FileInfo, filePath string, src *tar.Reader) err
 			_ = fp.Close()
 		}()
 
-		if err := fp.Truncate(fileInfo.Size()); err != nil {
+		localFileInfo, err := fp.Stat()
+
+		if err != nil {
+			return fmt.Errorf("stat %s: %w", filePath, err)
+		}
+
+		if localFileInfo.Size() == fileInfo.Size() {
+			// Skip.
+
+			dest = io.Discard
+		} else if localFileInfo.Size() > fileInfo.Size() {
+			// Truncate.
+
+			if _, err := fp.Seek(0, io.SeekStart); err != nil {
+				return fmt.Errorf("rewind %s: %w", filePath, err)
+			}
+
+			if err := os.Truncate(filePath, 0); err != nil {
+				return fmt.Errorf("truncate %s: %w", filePath, err)
+			}
+		}
+
+		if err := os.Truncate(filePath, fileInfo.Size()); err != nil {
 			return fmt.Errorf("set file size: %w", err)
+		}
+
+		if _, err := io.Copy(dest, src); err != nil {
+			return fmt.Errorf("write %s: %w", dest, err)
 		}
 
 		if err := fp.Chmod(fileInfo.Mode()); err != nil {
 			return fmt.Errorf("change filemode: %w", err)
-		}
-
-		if _, err := io.Copy(fp, src); err != nil {
-			return fmt.Errorf("write %s: %w", filePath, err)
-		}
-
-		// Unlike in the deferred function above, we do NOT expect Close to
-		// return an error at this point.
-
-		if err := fp.Close(); err != nil {
-			return fmt.Errorf("close file %s: %w", filePath, err)
 		}
 	}
 
 	return nil
 }
 
-func (d DownloadInfo) receiveDirectory() error {
+func (d DownloadInfo) Receive(progressFile *os.File) error {
 	gzipReader, err := gzip.NewReader(d.Contents)
 
 	if err != nil {
@@ -105,67 +120,23 @@ func (d DownloadInfo) receiveDirectory() error {
 		filePath := path.Join(d.Filename, header.Name)
 		fileInfo := header.FileInfo()
 
+		if progressFile != nil {
+			if _, err := progressFile.Seek(0, io.SeekStart); err != nil {
+				return fmt.Errorf("rewind progress file: %w", err)
+			}
+
+			if err := progressFile.Truncate(0); err != nil {
+				return fmt.Errorf("truncate progress file: %w", err)
+			}
+
+			if _, err := progressFile.WriteString(filePath); err != nil {
+				return fmt.Errorf("write progress file: %w", err)
+			}
+		}
+
 		if err := receiveTarEntry(fileInfo, filePath, tarReader); err != nil {
-			return fmt.Errorf("receive tar entry: %v", err)
+			return fmt.Errorf("receive tar entry: %w", err)
 		}
-	}
-}
-
-func (d DownloadInfo) receiveFile() error {
-	var src io.Reader = d.Contents
-
-	if d.Compressed {
-		gzipReader, err := gzip.NewReader(d.Contents)
-
-		if err != nil {
-			return fmt.Errorf("create gzip reader: %w", err)
-		}
-
-		src = gzipReader
-	}
-
-	partialFilename := d.Filename + ".partial"
-
-	fp, err := os.OpenFile(partialFilename, os.O_APPEND|os.O_CREATE, 0o666)
-
-	if err != nil {
-		return fmt.Errorf("open partial file: %w", err)
-	}
-
-	defer func() {
-		_ = fp.Close()
-	}()
-
-	// TODO: Truncate is (hopefully temporarily) disabled.
-	// I was running into some strange access denied issues.
-
-	if err := fp.Chmod(d.Mode); err != nil {
-		return fmt.Errorf("set destination file permissions: %w", err)
-	}
-
-	if _, err := io.Copy(fp, src); err != nil {
-		return fmt.Errorf("copy to destination file: %w", err)
-	}
-
-	if err := fp.Close(); err != nil {
-		return fmt.Errorf("close partial file: %w", err)
-	}
-
-	if err := os.Rename(partialFilename, d.Filename); err != nil {
-		return fmt.Errorf("rename partial file: %w", err)
-	}
-
-	return nil
-}
-
-func (d DownloadInfo) Receive() error {
-	// There's no special handling required for receiving multiple files, as they'll always
-	// arrive as a compressed directory.
-
-	if d.Directory {
-		return d.receiveDirectory()
-	} else {
-		return d.receiveFile()
 	}
 }
 
@@ -180,36 +151,18 @@ func (d DownloadInfo) ReceiveWeb(w http.ResponseWriter) {
 
 	var mimeType string
 
-	if d.Directory {
-		mimeType = "application/gzip"
-	} else {
+	if d.ShouldUnpack {
 		mimeType = mime.TypeByExtension(path.Ext(d.Filename))
 
 		if mimeType == "" {
 			mimeType = "text/plain"
 		}
+	} else {
+		mimeType = "application/gzip"
 	}
 
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-
-	if d.Size != 0 {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", d.Size))
-	}
-
-	if d.Directory {
-		w.Header().Set("Content-Disposition", "attachment;filename="+d.Filename+".tar.gz")
-	} else {
-		w.Header().Set("Content-Disposition", "attachment;filename="+d.Filename)
-	}
-
-	// We don't set Content-Encoding: gzip for directories even though they are
-	// sent as tar.gz files, because we don't want the browser to prematurely decompress
-	// the archive.
-
-	if !d.Directory && d.Compressed {
-		w.Header().Set("Content-Encoding", "gzip")
-	}
 
 	defer func() {
 		if d.Progress != nil {
@@ -217,10 +170,55 @@ func (d DownloadInfo) ReceiveWeb(w http.ResponseWriter) {
 		}
 	}()
 
+	var dst io.Writer
+	var src io.Reader
+
+	if d.ShouldUnpack {
+		gzipReader, err := gzip.NewReader(d.Contents)
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprintf(w, "Could not create gzip reader: %v", err)
+			return
+		}
+
+		tarReader := tar.NewReader(gzipReader)
+
+		_, err = tarReader.Next()
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprintf(w, "Could not create tar reader: %v", err)
+			return
+		}
+
+		gzipWriter := gzip.NewWriter(w)
+
+		defer func() {
+			if err := gzipWriter.Close(); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Failed to close gzip writer: %v\n", err)
+			}
+		}()
+
+		w.Header().Set("Content-Disposition", "attachment;filename="+d.Filename)
+		w.Header().Set("Content-Encoding", "gzip")
+
+		dst = gzipWriter
+		src = tarReader
+	} else {
+		w.Header().Set("Content-Disposition", "attachment;filename="+d.Filename+".tar.gz")
+		// We don't set Content-Encoding: gzip for directories even though they are
+		// sent as tar.gz files, because we don't want the browser to prematurely decompress
+		// the archive.
+
+		dst = w
+		src = d.Contents
+	}
+
 	var totalCopied int64
 
 	for {
-		n, err := io.CopyN(w, d.Contents, 1024)
+		n, err := io.CopyN(dst, src, 1024)
 
 		if err != nil {
 			if err != io.EOF {

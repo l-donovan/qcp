@@ -16,7 +16,7 @@ import (
 type BrowseSession interface {
 	EnterDirectory(name string) error
 	ListContents() ([]common.ThinDirEntry, error)
-	DownloadFile(name string, compress bool) (DownloadSession, error)
+	DownloadFile(name string) (DownloadSession, error)
 	Stop()
 }
 
@@ -98,10 +98,10 @@ func (s browseSession) ListContents() ([]common.ThinDirEntry, error) {
 	return entries, nil
 }
 
-func (s browseSession) DownloadFile(name string, compress bool) (DownloadSession, error) {
+func (s browseSession) DownloadFile(name string) (DownloadSession, error) {
 	srcFilePath := filepath.Join(s.path, name)
 
-	return StartDownload(s.client, []string{srcFilePath}, compress, 0)
+	return StartDownload(s.client, []string{srcFilePath}, "", 0)
 }
 
 func (s browseSession) Stop() {

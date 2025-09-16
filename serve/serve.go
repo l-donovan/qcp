@@ -3,7 +3,6 @@ package serve
 import (
 	"archive/tar"
 	"compress/gzip"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -13,10 +12,20 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/l-donovan/qcp/common"
 	"github.com/l-donovan/qcp/protocol"
 )
 
-func addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory string) error {
+type UploadInfo struct {
+	Filenames   []string
+	Destination io.WriteCloser
+	OffsetFile  string
+	OffsetPos   int64
+
+	foundOffsetFile bool
+}
+
+func (u *UploadInfo) addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory string) error {
 	archivePath := filePath
 
 	// This check prevents us from getting rid of the file name/extension separator when it's
@@ -27,6 +36,18 @@ func addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 
 	archivePath = strings.TrimPrefix(archivePath, string(filepath.Separator))
 	archivePath = filepath.ToSlash(archivePath)
+
+	if u.OffsetFile != "" && !u.foundOffsetFile {
+		// We are looking for the partial file.
+
+		if archivePath != u.OffsetFile {
+			// This is not the partial file.
+			return nil
+		}
+
+		// We found the partial file.
+		u.foundOffsetFile = true
+	}
 
 	// Open the path to read from.
 	fp, err := os.Open(filePath)
@@ -45,6 +66,14 @@ func addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 
 	if err != nil {
 		return err
+	}
+
+	if u.OffsetFile != "" && archivePath == u.OffsetFile {
+		fileInfo = common.NewPartialFileInfo(fileInfo, u.OffsetPos)
+
+		if _, err := fp.Seek(u.OffsetPos, io.SeekStart); err != nil {
+			return fmt.Errorf("seek partial file to offset: %w", err)
+		}
 	}
 
 	// Create the path in the tarball.
@@ -73,18 +102,27 @@ func addFileToTarArchive(tarWriter *tar.Writer, filePath string, directory strin
 	return nil
 }
 
-type UploadInfo struct {
-	Filenames   []string
-	Destination io.WriteCloser
-	Directory   bool
-	Compressed  bool
-	Offset      int64
-}
+// Serve sends file and directories as gzipped tarballs via stdout and a simple wire protocol.
+func (u UploadInfo) Serve() error {
+	if len(u.Filenames) == 0 {
+		return errors.New("no filenames provided")
+	}
 
-// serveDirectory sends a directory via stdout and a simple wire protocol.
-// The directory is added to a tar archive and compressed with gzip.
-func (u UploadInfo) serveDirectory() error {
-	if _, err := u.Destination.Write([]byte{protocol.IsDirectory}); err != nil {
+	var flags byte
+
+	if len(u.Filenames) == 1 {
+		fileInfo, err := os.Stat(u.Filenames[0])
+
+		if err != nil {
+			return fmt.Errorf("stat %s: %w", u.Filenames[0], err)
+		}
+
+		if !fileInfo.IsDir() {
+			flags |= protocol.ShouldUnpack
+		}
+	}
+
+	if _, err := u.Destination.Write([]byte{flags}); err != nil {
 		return fmt.Errorf("write flags: %w", err)
 	}
 
@@ -104,144 +142,6 @@ func (u UploadInfo) serveDirectory() error {
 		}
 	}()
 
-	if err := filepath.WalkDir(u.Filenames[0], func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip the source directory root. This can be ignored because the source
-		// directory root is just the root of the tarball.
-		if path == u.Filenames[0] {
-			return nil
-		}
-
-		return addFileToTarArchive(tarWriter, path, u.Filenames[0])
-	}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (u UploadInfo) writeFileHeader(flags byte) (*os.File, error) {
-	fileSizeBytes := make([]byte, 4)
-	fileModeBytes := make([]byte, 4)
-
-	fp, err := os.Open(u.Filenames[0])
-
-	if err != nil {
-		return nil, fmt.Errorf("open source file: %w", err)
-	}
-
-	fileInfo, err := fp.Stat()
-
-	if err != nil {
-		return nil, fmt.Errorf("stat file: %w", err)
-	}
-
-	// One Byte containing flags.
-	if _, err := u.Destination.Write([]byte{flags}); err != nil {
-		return nil, fmt.Errorf("write flags: %w", err)
-	}
-
-	// One uint32 containing the file size.
-	fileSize := uint32(fileInfo.Size())
-	binary.LittleEndian.PutUint32(fileSizeBytes, fileSize)
-
-	if _, err := u.Destination.Write(fileSizeBytes); err != nil {
-		return nil, fmt.Errorf("write file size: %w", err)
-	}
-
-	// One uint32 containing the file mode.
-	fileMode := uint32(fileInfo.Mode())
-	binary.LittleEndian.PutUint32(fileModeBytes, fileMode)
-
-	if _, err := u.Destination.Write(fileModeBytes); err != nil {
-		return nil, fmt.Errorf("write file mode: %w", err)
-	}
-
-	return fp, nil
-}
-
-func (u UploadInfo) serveFileCompressed() error {
-	fp, err := u.writeFileHeader(protocol.IsCompressed)
-
-	if err != nil {
-		return fmt.Errorf("write file header: %w", err)
-	}
-
-	defer func() {
-		if err := fp.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error closing file: %v\n", err)
-		}
-	}()
-
-	if _, err := fp.Seek(u.Offset, io.SeekStart); err != nil {
-		return fmt.Errorf("seek in file: %w", err)
-	}
-
-	gzipWriter := gzip.NewWriter(u.Destination)
-
-	defer func() {
-		if err := gzipWriter.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error closing gzip writer: %v\n", err)
-		}
-	}()
-
-	// The file contents.
-	if _, err := io.Copy(gzipWriter, fp); err != nil {
-		return fmt.Errorf("copy source file: %w", err)
-	}
-
-	return nil
-}
-
-func (u UploadInfo) serveFileUncompressed() error {
-	fp, err := u.writeFileHeader(0)
-
-	if err != nil {
-		return fmt.Errorf("write file header: %w", err)
-	}
-
-	defer func() {
-		if err := fp.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error closing file: %v\n", err)
-		}
-	}()
-
-	if _, err := fp.Seek(u.Offset, io.SeekStart); err != nil {
-		return fmt.Errorf("seek in file: %w", err)
-	}
-
-	// The file contents.
-	if _, err := io.Copy(u.Destination, fp); err != nil {
-		return fmt.Errorf("copy source file: %w", err)
-	}
-
-	return nil
-}
-
-func (u UploadInfo) serveMultipleFiles() error {
-	if _, err := u.Destination.Write([]byte{protocol.IsDirectory}); err != nil {
-		return fmt.Errorf("write flags: %w", err)
-	}
-
-	gzipWriter := gzip.NewWriter(u.Destination)
-
-	defer func() {
-		if err := gzipWriter.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error closing gzip writer: %v\n", err)
-		}
-	}()
-
-	tarWriter := tar.NewWriter(gzipWriter)
-
-	defer func() {
-		if err := tarWriter.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error closing tar writer: %v\n", err)
-		}
-	}()
-
 	for _, srcFilePath := range u.Filenames {
 		info, err := os.Stat(srcFilePath)
 
@@ -251,7 +151,7 @@ func (u UploadInfo) serveMultipleFiles() error {
 
 		basePath := path.Dir(srcFilePath)
 
-		if err := addFileToTarArchive(tarWriter, srcFilePath, basePath); err != nil {
+		if err := u.addFileToTarArchive(tarWriter, srcFilePath, basePath); err != nil {
 			return err
 		}
 
@@ -261,11 +161,13 @@ func (u UploadInfo) serveMultipleFiles() error {
 					return err
 				}
 
+				// Skip the source directory root. This can be ignored because the source
+				// directory root is just the root of the tarball.
 				if path == srcFilePath {
 					return nil
 				}
 
-				return addFileToTarArchive(tarWriter, path, basePath)
+				return u.addFileToTarArchive(tarWriter, path, basePath)
 			}); err != nil {
 				return err
 			}
@@ -273,21 +175,4 @@ func (u UploadInfo) serveMultipleFiles() error {
 	}
 
 	return nil
-}
-
-// Serve sends file and directories via stdout and a simple wire protocol.
-func (u UploadInfo) Serve() error {
-	if len(u.Filenames) == 0 {
-		return errors.New("no filenames provided")
-	}
-
-	if len(u.Filenames) > 1 {
-		return u.serveMultipleFiles()
-	} else if u.Directory {
-		return u.serveDirectory()
-	} else if u.Compressed {
-		return u.serveFileCompressed()
-	} else {
-		return u.serveFileUncompressed()
-	}
 }
